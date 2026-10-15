@@ -1,0 +1,1607 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Llama Hop</title>
+<style>
+@font-face { font-family: GokuEmblem; src: url('./goku-emblem.ttf') format('truetype'); font-weight: 700; }
+@font-face { font-family: OraSfx; src: url('./ora-sfx.ttf') format('truetype'); font-weight: 900; }
+@font-face { font-family: MenacingSfx; src: url('./menacing-sfx.ttf') format('truetype'); font-weight: 500; }
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100svh; display: grid; place-items: center; background: #f6efdF; color: #344739; font-family: system-ui, sans-serif; }
+main { width: min(96vw, 850px); text-align: center; }
+.game-layout { display: grid; grid-template-columns: minmax(0, 440px) 320px; gap: 28px; align-items: start; justify-content: center; }
+.game-panel { min-width: 0; }
+.discoveries { padding: 18px; border-radius: 22px; background: #fff9ec; text-align: left; }
+.discoveries h2 { margin: 0 0 6px; font-size: 20px; }
+.discoveries p { font-size: 12px; line-height: 1.5; }
+.scene-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 8px; }
+.scene-card { margin: 0; min-width: 0; }
+.scene-card canvas { width: 100%; display: block; border-radius: 8px; image-rendering: pixelated; }
+.scene-card figcaption { margin-top: 5px; font-size: 10px; line-height: 1.35; overflow-wrap: anywhere; }
+.final-note { font-size: 12px; line-height: 1.5; margin: 10px 0; }
+@media (max-width: 720px) { .game-layout { grid-template-columns: minmax(0, 440px); } .discoveries { margin-top: 0; } }
+h1 { margin: 16px 0 4px; font-size: 32px; }
+p { margin: 0 0 16px; font-size: 14px; }
+#game { display: block; width: 100%; border-radius: 22px; box-shadow: 0 10px 30px #34473922; touch-action: none; }
+footer { padding: 14px; font-size: 12px; }
+button { margin-top: 14px; padding: 12px 24px; border: 0; border-radius: 12px; background: #558c61; color: white; font: bold 16px system-ui; cursor: pointer; }
+#clear-state { margin: 10px 0; padding: 9px 16px; background: transparent; color: #8c4d46; border: 1px solid #c9aaa0; font-size: 12px; }
+#reset-status { font-size: 12px; }
+</style>
+</head>
+<body>
+<main>
+<h1>🦙 Llama Hop</h1>
+<p>Little llama. Big hops. Endless skies.</p>
+<div class="game-layout">
+<section class="game-panel" aria-label="Play Llama Hop">
+<canvas id="game" width="400" height="560" tabindex="0" aria-label="Llama Hop game. Tap or press space to jump through gaps."></canvas>
+<button id="restart" hidden>Play again ↵</button>
+<p class="final-note">Final transformation at <strong>103 points</strong> — keep hopping afterward to beat your best!</p>
+<footer>Tap, click, or press Space to hop · Pink cacti give +3 points!</footer>
+</section>
+<aside class="discoveries" aria-labelledby="discoveries-title">
+<h2 id="discoveries-title">Worlds to discover</h2>
+<p>Pixelated peeks at places you might visit. Keep hopping to reveal them!</p>
+<p id="discovery-count" role="status"></p>
+<div class="scene-grid" id="scene-grid"></div>
+</aside>
+</div>
+<button id="clear-state" type="button">Clear game state</button>
+<p id="reset-status" role="status"></p>
+</main>
+<script>
+const canvas = document.getElementById('game');
+let ctx = canvas.getContext('2d');
+// Keep game coordinates at 400×560, but render sharply on high-density screens.
+const pixelRatio = Math.min(window.devicePixelRatio || 1, 3);
+canvas.width = 400 * pixelRatio; canvas.height = 560 * pixelRatio;
+ctx.scale(pixelRatio, pixelRatio);
+const restart = document.getElementById('restart');
+document.fonts.load('700 12px GokuEmblem', '悟').catch(() => {});
+document.fonts.load('900 27px OraSfx', 'オラッ！').catch(() => {});
+document.fonts.load('500 15px MenacingSfx', 'ゴゴゴ').catch(() => {});
+const ponytaArtwork = new Image();
+ponytaArtwork.src = './ponyta.svg';
+let state = 'ready', y = 255, velocity = 0, pipes = [], score = 0, best = 0, spawn = 0, last = 0;
+let confetti = [], celebration = 0, milestone = 0;
+let lives = 3, invulnerable = 0, shake = 0, impact = 0, impactY = 255, hitParticles = [];
+let lifeBonus = 0;
+let sparkles = [], sparkleSpawn = 0;
+let trailParticles = [], trailSpawn = 0, lastTrailKind = null;
+const trailStyles = [
+  { until: 13, kind: 'dust', colors: ['#e0c6a3', '#fff5db'] },
+  { until: 23, kind: 'electric', colors: [] },
+  { until: 33, kind: 'energy', colors: ['#f8ce4e', '#fff4af'] },
+  { until: 43, kind: 'ember', colors: ['#f19b42', '#e96447'] },
+  { until: 53, kind: 'speed', colors: ['#c6edff', '#66a6df'] },
+  { until: 63, kind: 'elements', colors: ['#65b8e9', '#ed9d59', '#a6bf8c', '#e4f1ef'] },
+  { until: 73, kind: 'magic', colors: ['#e69a49', '#f5cb79'] },
+  { until: 83, kind: 'sith', colors: ['#ed5b65', '#ffd2c9'] },
+  { until: 93, kind: 'rainbow', colors: [] },
+  { until: 103, kind: 'paw', colors: ['#ae7d46', '#e0ba78'] },
+  { until: Infinity, kind: 'menacing', colors: ['#52316f'] }
+];
+let llamaTilt = 0;
+const dogePhrases = ['much hop', 'very llama', 'wow'];
+let dogeWords = [];
+let oraBursts = [];
+// Set a score to preview a transformation; null uses normal score progression.
+const previewAppearanceScore = null;
+function appearanceScore() { return previewAppearanceScore ?? score; }
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const weatherTypes = [
+  { name: 'Sunny day', sky: '#c9e9e5', hills: '#b8d5b1', cloud: '#ffffff90', sun: '#ffe49a', landmark: 'windmill' },
+  { name: 'Night time', sky: '#263653', hills: '#475e68', cloud: '#71809a70', moon: true, landmark: 'observatory' },
+  { name: 'Rainy day', sky: '#91a9b9', hills: '#809e96', cloud: '#d0dae5cc', rain: 1, landmark: 'cottage' },
+  { name: 'Dusk', sky: '#e4a0a3', hills: '#ad929c', cloud: '#ffe0c480', sun: '#ffce89', landmark: 'castle' },
+  { name: 'Thunderstorm', sky: '#465571', hills: '#637b80', cloud: '#8c9aafcc', rain: 1.5, thunder: true, landmark: 'haunted' },
+  { name: 'Hurricane', sky: '#657d87', hills: '#7c9791', cloud: '#aebfc9cc', rain: 2, wind: true, landmark: 'lighthouse' },
+  { name: 'Snowfall', sky: '#b8cddb', hills: '#d8e4dc', cloud: '#ffffffb0', snow: true, landmark: 'cabin' },
+  { name: 'Fog', sky: '#c5d1cf', hills: '#a9bcb4', cloud: '#eef4f0c0', fog: true, landmark: 'bridge' },
+  { name: 'Aurora', sky: '#233c50', hills: '#466c6c', cloud: '#71809a50', moon: true, aurora: true, landmark: 'igloos' },
+  { name: 'Sandstorm', sky: '#d5b68b', hills: '#bba17b', cloud: '#e8cca080', dust: true, landmark: 'pyramids' },
+  { name: 'Rainbow', sky: '#c9e9e5', hills: '#b8d5b1', cloud: '#ffffff90', sun: '#ffe49a', rainbow: true },
+  { name: 'DSO SP20', sky: '#d7eaf0', hills: '#a7c7ad', cloud: '#ffffff90', sun: '#ffe49a', landmark: 'dso' },
+  { name: 'Singapore', sky: '#e7b8c8', hills: '#889bb5', cloud: '#ffe6da80', sun: '#ffdcaa', landmark: 'mbs' },
+  { name: 'Mordor', sky: '#49363d', hills: '#3a3037', cloud: '#93706a60', landmark: 'mordor' },
+  { name: 'Japan', sky: '#cce5f1', hills: '#a6bcab', cloud: '#ffffff90', landmark: 'japan' },
+  { name: 'Antarctica', sky: '#c8e7f3', hills: '#e9f5fa', cloud: '#ffffff90', snow: true, landmark: 'antarctica' }
+];
+let discoveredScenes = new Set();
+try {
+  const saved = JSON.parse(localStorage.getItem('llama-scenes') || '[]');
+  if (Array.isArray(saved)) discoveredScenes = new Set(saved.filter(name => weatherTypes.some(scene => scene.name === name)));
+} catch {}
+const sceneCards = [];
+let weatherElapsed = 0, weatherLast = null;
+let currentWeather = 0, previousWeather = 0, weatherChangedAt = 0, nextWeatherChange = 8000;
+try { best = Number(localStorage.getItem('llama-best')) || 0; } catch {}
+function hop() {
+  if (state === 'over') return;
+  if (state !== 'playing') {
+    state = 'playing'; y = 255; velocity = 0; pipes = []; score = 0; spawn = 0;
+    confetti = []; celebration = 0; milestone = 0;
+    lives = 3; invulnerable = 0; shake = 0; impact = 0; hitParticles = [];
+    lifeBonus = 0;
+    sparkles = []; sparkleSpawn = 0;
+    trailParticles = []; trailSpawn = 0; lastTrailKind = null;
+    llamaTilt = 0;
+    dogeWords = [];
+    oraBursts = [];
+    weatherLast = null;
+  }
+  velocity = -6.2;
+  if (appearanceScore() >= 93 && appearanceScore() < 103) {
+    dogeWords.push({ text: dogePhrases[Math.floor(Math.random() * dogePhrases.length)], y: Math.max(82, y - 58), life: 48 });
+    dogeWords = dogeWords.slice(-4);
+  }
+  if (appearanceScore() >= 103) {
+    oraBursts.push({ x: 143 + (oraBursts.length % 2) * 18, y: Math.max(90, Math.min(480, y - 25)), life: 40 });
+    oraBursts = oraBursts.slice(-4);
+  }
+}
+function playAgain() {
+  state = 'ready'; restart.hidden = true; canvas.focus(); hop();
+}
+restart.addEventListener('click', playAgain);
+document.getElementById('clear-state').addEventListener('click', () => {
+  if (!window.confirm('Reset your best score, all discovered worlds, and the current game? This cannot be undone.')) return;
+  let savedProgressCleared = true;
+  try {
+    localStorage.removeItem('llama-best');
+    localStorage.removeItem('llama-scenes');
+  } catch { savedProgressCleared = false; }
+  state = 'ready'; y = 255; velocity = 0; pipes = []; score = 0; best = 0; spawn = 0; last = 0;
+  confetti = []; celebration = 0; milestone = 0;
+  lives = 3; invulnerable = 0; shake = 0; impact = 0; impactY = 255; hitParticles = [];
+  lifeBonus = 0; sparkles = []; sparkleSpawn = 0; llamaTilt = 0; dogeWords = []; oraBursts = [];
+  trailParticles = []; trailSpawn = 0; lastTrailKind = null;
+  weatherElapsed = 0; weatherLast = null;
+  currentWeather = 0; previousWeather = 0; weatherChangedAt = 0; nextWeatherChange = 8000;
+  discoveredScenes.clear();
+  sceneCards.forEach((card, index) => paintSceneCard(index));
+  updateDiscoveryCount();
+  restart.hidden = true;
+  document.getElementById('reset-status').textContent = savedProgressCleared
+    ? 'Progress cleared. A fresh adventure awaits!'
+    : 'Game reset, but saved progress could not be cleared from browser storage.';
+});
+canvas.addEventListener('pointerdown', e => { e.preventDefault(); hop(); });
+window.addEventListener('keydown', e => {
+  if (e.target.closest('button')) return;
+  if (e.code === 'Space' || e.code === 'ArrowUp') {
+    e.preventDefault(); if (!e.repeat) hop();
+  }
+  if (e.code === 'Enter' && state === 'over') {
+    e.preventDefault(); if (!e.repeat) playAgain();
+  }
+});
+function end() {
+  state = 'over'; best = Math.max(best, score);
+  restart.hidden = false;
+  try { localStorage.setItem('llama-best', best); } catch {}
+}
+function loseLife(cactusHit = null) {
+  if (state !== 'playing' || invulnerable > 0) return;
+  lives--; invulnerable = 90; shake = reducedMotion ? 0 : 25; impact = 45;
+  impactY = Math.max(50, Math.min(490, y));
+  hitParticles = reducedMotion ? [] : Array.from({ length: 22 }, (_, i) => {
+    const angle = i * Math.PI * 2 / 22, speed = 2 + (i % 4);
+    return { x: 100, y: impactY, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, life: 40 };
+  });
+  if (cactusHit) cactusHit.passed = true; // No points for a cactus we hit.
+  if (lives === 0) { end(); return; }
+  // Recover inside the gap, or away from the sky/ground, without resetting progress.
+  y = cactusHit ? cactusHit.top + 85 : Math.max(90, Math.min(450, y));
+  velocity = cactusHit ? -2 : y <= 90 ? 2 : -3;
+}
+function drawImpact(dt) {
+  ctx.save();
+  for (const p of hitParticles) {
+    p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 0.08 * dt; p.life -= dt;
+    ctx.globalAlpha = Math.max(0, p.life / 40); ctx.fillStyle = '#ffd166';
+    ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI * 2); ctx.fill();
+  }
+  hitParticles = hitParticles.filter(p => p.life > 0);
+  if (impact > 0) {
+    ctx.globalAlpha = Math.min(1, impact / 15);
+    ctx.strokeStyle = '#f28f87'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(100, impactY, reducedMotion ? 40 : 12 + (45 - impact) * 1.3, 0, Math.PI * 2); ctx.stroke();
+    const labelY = Math.max(65, impactY - 65);
+    rounded(52, labelY - 23, 96, 30, 10, '#fff9ec');
+    ctx.fillStyle = '#b64f56'; ctx.textAlign = 'center'; ctx.font = 'bold 16px system-ui';
+    ctx.fillText('-1 life', 100, labelY - 3);
+    impact = Math.max(0, impact - dt);
+  }
+  ctx.restore();
+}
+function drawLastLifeWarning(time) {
+  if (state !== 'playing' || lives !== 1) return;
+  ctx.save();
+  const pulse = reducedMotion ? 0.65 : 0.65 + Math.sin(time / 450) * 0.2;
+  const glow = ctx.createRadialGradient(200, 280, 140, 200, 280, 340);
+  glow.addColorStop(0, 'rgba(215, 55, 75, 0)');
+  glow.addColorStop(1, 'rgba(215, 55, 75, 0.5)');
+  ctx.globalAlpha = pulse; ctx.fillStyle = glow; ctx.fillRect(0, 0, 400, 560);
+  ctx.strokeStyle = '#dc5366'; ctx.lineWidth = 5;
+  ctx.beginPath(); ctx.roundRect(3, 3, 394, 554, 20); ctx.stroke();
+  ctx.restore();
+}
+function rounded(x, y, w, h, radius, color) {
+  ctx.fillStyle = color; ctx.beginPath(); ctx.roundRect(x, y, w, h, radius); ctx.fill();
+}
+function awardPoints(points) {
+  const previousScore = score;
+  score += points;
+  const extraLives = Math.floor(score / 9) - Math.floor(previousScore / 9);
+  if (extraLives > 0) { lives += extraLives; lifeBonus = 100; }
+  if (Math.floor(score / 5) > Math.floor(previousScore / 5)) {
+    celebrate(Math.floor(score / 5) * 5);
+  }
+}
+function celebrate(milestoneScore) {
+  milestone = milestoneScore; celebration = 100;
+  const colors = ['#e79373', '#ffd166', '#558c61', '#ffffff', '#a78bfa'];
+  confetti = reducedMotion ? [] : Array.from({ length: 45 }, () => ({
+    x: 100, y, vx: (Math.random() - 0.35) * 8, vy: -2 - Math.random() * 6,
+    angle: Math.random() * Math.PI, spin: (Math.random() - 0.5) * 0.2,
+    life: 85, color: colors[Math.floor(Math.random() * colors.length)]
+  }));
+}
+function drawCelebration(dt) {
+  ctx.save();
+  for (const p of confetti) {
+    p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 0.12 * dt;
+    p.angle += p.spin * dt; p.life -= dt;
+    ctx.save(); ctx.globalAlpha = Math.max(0, Math.min(1, p.life / 25));
+    ctx.translate(p.x, p.y); ctx.rotate(p.angle);
+    ctx.fillStyle = p.color; ctx.fillRect(-3, -2, 6, 4); ctx.restore();
+  }
+  confetti = confetti.filter(p => p.life > 0);
+  if (celebration > 0) {
+    celebration = Math.max(0, celebration - dt);
+    ctx.globalAlpha = Math.min(1, celebration / 20);
+    rounded(75, 70, 250, 42, 14, '#fff9ec');
+    ctx.fillStyle = '#344739'; ctx.textAlign = 'center'; ctx.font = 'bold 19px system-ui';
+    ctx.fillText(`★ ${milestone} points! Llama-zing! ★`, 200, 98);
+  }
+  ctx.restore();
+}
+function cactus(x, top, bottom, pink) {
+  const color = pink ? '#df79a5' : '#558c61';
+  rounded(x, -18, 54, top + 18, 12, color);
+  rounded(x, bottom, 54, 530 - bottom, 12, color);
+  ctx.strokeStyle = pink ? '#f5b2d0' : '#76a97b'; ctx.lineWidth = 3;
+  for (const offset of [16, 36]) {
+    ctx.beginPath(); ctx.moveTo(x + offset, 0); ctx.lineTo(x + offset, top - 10);
+    ctx.moveTo(x + offset, bottom + 10); ctx.lineTo(x + offset, 530); ctx.stroke();
+  }
+  if (pink) {
+    ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.font = 'bold 18px system-ui';
+    ctx.fillText('+3', x + 27, top - 18);
+  }
+}
+function drawLlamaEffects(time) {
+  const score = appearanceScore();
+  const t = reducedMotion ? 0 : time / 1000;
+  if (score >= 73) return;
+  if (score >= 63) {
+    drawStrangeMagic(time, false);
+    return;
+  }
+  if (score >= 53) {
+    const glow = ctx.createRadialGradient(0, -12, 8, 0, -12, 64);
+    glow.addColorStop(0, '#b9edff55'); glow.addColorStop(0.6, '#8dd9ff30');
+    glow.addColorStop(1, '#8dd9ff00');
+    ctx.fillStyle = glow; ctx.fillRect(-64, -76, 128, 128);
+    drawAvatarElements(time, false);
+    drawOrbitingStones(time, false);
+    return;
+  }
+  if (score >= 43) {
+    ctx.strokeStyle = '#e6f7ffb0'; ctx.lineWidth = 2; ctx.lineCap = 'round';
+    for (let i = 0; i < 5; i++) {
+      const drift = reducedMotion ? 0 : (t * 45 + i * 13) % 32;
+      const x = -31 - drift, yy = -33 + i * 13;
+      ctx.beginPath(); ctx.moveTo(x - 23, yy + 3);
+      ctx.quadraticCurveTo(x - 6, yy - 3, x + 7, yy); ctx.stroke();
+    }
+    return;
+  }
+  if (score >= 33) {
+    drawPonytaFlames(time);
+    return;
+  }
+  if (score >= 23) {
+    drawSuperSaiyanAura(time);
+  }
+}
+function drawStrangeMagic(time, front) {
+  const t = reducedMotion ? 0 : time / 1000;
+  ctx.save(); ctx.lineCap = 'round';
+  for (let side = 0; side < 2; side++) {
+    if ((side === 1) !== front) continue;
+    ctx.save(); ctx.translate(side ? 32 : -31, side ? -6 : -18);
+    ctx.rotate(t * (side ? 0.45 : -0.35));
+    ctx.shadowColor = '#f39232'; ctx.shadowBlur = 5;
+    ctx.strokeStyle = '#ed8628'; ctx.lineWidth = 2;
+    for (const radius of [16, 22]) {
+      ctx.beginPath(); ctx.arc(0, 0, radius, 0, Math.PI * 2); ctx.stroke();
+    }
+    ctx.shadowBlur = 0; ctx.strokeStyle = '#ffcf72'; ctx.lineWidth = 1;
+    for (let turn = 0; turn < 2; turn++) {
+      ctx.save(); ctx.rotate(turn * Math.PI / 4);
+      ctx.strokeRect(-11, -11, 22, 22); ctx.restore();
+    }
+    for (let i = 0; i < 12; i++) {
+      ctx.save(); ctx.rotate(i * Math.PI / 6);
+      ctx.beginPath(); ctx.moveTo(18, -1); ctx.lineTo(20, -1);
+      ctx.lineTo(19, 2); ctx.lineTo(21, 2); ctx.stroke();
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+  ctx.restore();
+}
+function drawStrangeCloak(time) {
+  const flutter = reducedMotion ? 0 : Math.sin(time / 350) * 3;
+  ctx.fillStyle = '#a82638'; ctx.strokeStyle = '#702535'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(12, -23); ctx.lineTo(-8, -20);
+  ctx.quadraticCurveTo(-32, -10, -40, 29 + flutter);
+  ctx.quadraticCurveTo(-14, 40, 13, 22); ctx.lineTo(12, -23);
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.strokeStyle = '#d65350'; ctx.beginPath(); ctx.moveTo(-8, -12);
+  ctx.quadraticCurveTo(-16, 10, -29, 29 + flutter); ctx.stroke();
+  // Raised collar frames the head without hiding the muzzle or ears.
+  ctx.fillStyle = '#b93242'; ctx.beginPath(); ctx.moveTo(6, -17);
+  ctx.lineTo(-3, -39); ctx.quadraticCurveTo(10, -39, 12, -23);
+  ctx.lineTo(22, -35); ctx.lineTo(20, -14); ctx.closePath(); ctx.fill();
+}
+function drawSuperSaiyanAura(time) {
+  const t = reducedMotion ? 0 : time / 1000;
+  ctx.save();
+  const glow = ctx.createRadialGradient(0, -15, 12, 0, -15, 73);
+  glow.addColorStop(0, '#fff7bc30'); glow.addColorStop(0.55, '#ffdd5960');
+  glow.addColorStop(1, '#ffcc3300');
+  ctx.fillStyle = glow; ctx.fillRect(-74, -89, 148, 148);
+  // A tall, tapered flame envelope, with a clear center around the character.
+  for (let layer = 0; layer < 3; layer++) {
+    ctx.save(); ctx.translate(0, 29); ctx.scale(1 - layer * 0.16, 1 - layer * 0.12);
+    const sway = reducedMotion ? 0 : Math.sin(t * 3 + layer) * 3;
+    ctx.fillStyle = ['#efb72a80', '#ffe449b0', '#fff6a0b0'][layer];
+    ctx.beginPath(); ctx.moveTo(0, 0);
+    ctx.quadraticCurveTo(-37, -4, -44, -50);
+    ctx.lineTo(-32, -40); ctx.lineTo(-45 + sway, -86);
+    ctx.lineTo(-28, -67); ctx.lineTo(-28 + sway, -111);
+    ctx.lineTo(-15, -86); ctx.lineTo(-5 + sway, -126);
+    ctx.lineTo(6, -103); ctx.lineTo(20 + sway, -121);
+    ctx.lineTo(23, -82); ctx.lineTo(38, -99);
+    ctx.lineTo(32, -57); ctx.lineTo(46 + sway, -71);
+    ctx.quadraticCurveTo(40, -8, 0, 0); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+  // Thin streams rise along the sides instead of flashing the whole aura.
+  ctx.lineCap = 'round'; ctx.lineWidth = 1.5;
+  for (let i = 0; i < 14; i++) {
+    const travel = reducedMotion ? (i * 17) % 85 : (t * 60 + i * 17) % 85;
+    const x = (i % 2 ? -1 : 1) * (25 + (i % 4) * 4);
+    const yy = 22 - travel;
+    ctx.strokeStyle = i % 3 ? '#fffbc2a0' : '#ffc72b99';
+    ctx.beginPath(); ctx.moveTo(x, yy); ctx.lineTo(x * 0.9, yy - 10 - (i % 3) * 4); ctx.stroke();
+  }
+  // Soft blue-white electricity remains part of the 23-point form.
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 3; i++) {
+      const angle = i * Math.PI * 2 / 3 + t * 0.35;
+      const energy = reducedMotion ? 0.5 : (1 + Math.sin(t * 2 + i * 1.7)) / 2;
+      ctx.save(); ctx.translate(0, -10); ctx.rotate(angle);
+      ctx.strokeStyle = `rgba(190, 238, 255, ${0.3 + energy * 0.3})`;
+      ctx.beginPath(); ctx.moveTo(26, 0); ctx.lineTo(33, -4);
+      ctx.lineTo(32, 3); ctx.lineTo(41 + energy * 8, -2); ctx.stroke(); ctx.restore();
+    }
+  ctx.restore();
+}
+function drawSuperSaiyanHair() {
+  ctx.fillStyle = '#ffdb49'; ctx.strokeStyle = '#d49b29'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(5, -28); ctx.lineTo(-9, -43); ctx.lineTo(-2, -41);
+  ctx.lineTo(-9, -57); ctx.lineTo(3, -49); ctx.lineTo(3, -66);
+  ctx.lineTo(13, -53); ctx.lineTo(21, -64); ctx.lineTo(23, -49);
+  ctx.lineTo(33, -53); ctx.lineTo(25, -34); ctx.lineTo(18, -36);
+  ctx.lineTo(12, -30); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.strokeStyle = '#fff3a1';
+  for (const [x, yy] of [[-3, -50], [7, -57], [20, -55]]) {
+    ctx.beginPath(); ctx.moveTo(12, -37); ctx.lineTo(x, yy); ctx.stroke();
+  }
+}
+function ponytaFlame(x, yy, width, height, phase, time) {
+  const t = reducedMotion ? 0 : time / 1000;
+  const sway = Math.sin(t * 5 + phase) * (reducedMotion ? 0 : 0.12);
+  ctx.save(); ctx.translate(x, yy); ctx.scale(width, height);
+  ctx.fillStyle = '#ec6236';
+  ctx.beginPath(); ctx.moveTo(-0.35, 0);
+  ctx.bezierCurveTo(-0.8, -0.22, -0.42, -0.55, -0.58, -0.68);
+  ctx.quadraticCurveTo(-0.22, -0.6, -0.2, -0.38);
+  ctx.bezierCurveTo(-0.18, -0.65, 0.45 + sway, -0.78, 0.25 + sway, -1);
+  ctx.bezierCurveTo(0.95 + sway, -0.72, 0.24, -0.4, 0.5, -0.52);
+  ctx.bezierCurveTo(0.72, -0.26, 0.42, 0.08, -0.35, 0); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#ffb62f';
+  ctx.beginPath(); ctx.moveTo(-0.28, -0.05);
+  ctx.quadraticCurveTo(-0.52, -0.32, -0.27, -0.48);
+  ctx.quadraticCurveTo(-0.18, -0.26, -0.06, -0.35);
+  ctx.quadraticCurveTo(0.38 + sway, -0.57, 0.36 + sway, -0.8);
+  ctx.bezierCurveTo(0.63, -0.45, 0.16, -0.22, 0.36, -0.25);
+  ctx.quadraticCurveTo(0.4, 0.02, -0.28, -0.05); ctx.fill();
+  ctx.fillStyle = '#ffe77b';
+  ctx.beginPath(); ctx.moveTo(-0.15, -0.06);
+  ctx.quadraticCurveTo(-0.2, -0.27, 0.15, -0.43);
+  ctx.quadraticCurveTo(0.07, -0.22, 0.22, -0.14);
+  ctx.quadraticCurveTo(0.19, 0, -0.15, -0.06); ctx.fill();
+  ctx.restore();
+}
+function drawPonytaFlames(time) {
+  const t = reducedMotion ? 0 : time / 1000;
+  const sway = reducedMotion ? 0 : Math.sin(t * 4) * 3;
+  ctx.save();
+  // A narrow tail root opens into a long, swept-back horse-tail plume.
+  for (let layer = 0; layer < 3; layer++) {
+    ctx.save(); ctx.translate(-18, -4); ctx.scale(1 - layer * 0.15, 1 - layer * 0.2);
+    ctx.fillStyle = ['#e65b35', '#ffae2c', '#ffe576'][layer];
+    ctx.beginPath(); ctx.moveTo(1, 4);
+    ctx.bezierCurveTo(-11, 3, -14, -12, -28, -10);
+    ctx.quadraticCurveTo(-45, -8, -47, -25 + sway);
+    ctx.quadraticCurveTo(-39, -19, -35, -25);
+    ctx.quadraticCurveTo(-47, -36, -42, -44 + sway);
+    ctx.bezierCurveTo(-39, -27, -23, -39, -23, -49 + sway);
+    ctx.quadraticCurveTo(-12, -37, -23, -28);
+    ctx.quadraticCurveTo(-9, -31, -10, -39);
+    ctx.bezierCurveTo(0, -25, -15, -18, -8, -10);
+    ctx.quadraticCurveTo(-4, -4, 1, -2); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+  // One continuous mane follows the back of the neck down to the withers.
+  for (let layer = 0; layer < 3; layer++) {
+    ctx.save(); ctx.translate(7, -31); ctx.scale(1 - layer * 0.22, 1 - layer * 0.09);
+    ctx.fillStyle = ['#e65b35', '#ffae2c', '#ffe576'][layer];
+    ctx.beginPath(); ctx.moveTo(4, -7);
+    ctx.quadraticCurveTo(-6, -16, -20, -14 + sway);
+    ctx.lineTo(-13, -7); ctx.quadraticCurveTo(-23, -9, -26, -3 + sway);
+    ctx.lineTo(-15, 0); ctx.quadraticCurveTo(-21, 2, -25, 8);
+    ctx.lineTo(-13, 7); ctx.quadraticCurveTo(-20, 14, -20, 19);
+    ctx.lineTo(-11, 17); ctx.quadraticCurveTo(-16, 24, -23, 27);
+    ctx.quadraticCurveTo(-6, 33, 0, 25);
+    ctx.quadraticCurveTo(7, 10, 4, -7); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+  ctx.restore();
+}
+function drawPonytaForelock(time) {
+  const sway = reducedMotion ? 0 : Math.sin(time / 250) * 2;
+  ctx.save();
+  for (let layer = 0; layer < 2; layer++) {
+    ctx.fillStyle = layer ? '#ffda59' : '#ec7130';
+    ctx.save(); ctx.translate(11, -36); ctx.scale(1 - layer * 0.2, 1 - layer * 0.25);
+    ctx.beginPath(); ctx.moveTo(7, 1);
+    ctx.quadraticCurveTo(12, -12, -5, -16);
+    ctx.quadraticCurveTo(-17, -18, -21, -29 + sway);
+    ctx.quadraticCurveTo(-26, -18, -19, -11);
+    ctx.lineTo(-27, -14 + sway);
+    ctx.bezierCurveTo(-24, 0, -6, -3, -2, 4);
+    ctx.quadraticCurveTo(3, -1, 7, 1); ctx.closePath(); ctx.fill(); ctx.restore();
+  }
+  ctx.restore();
+}
+function drawAvatarElements(time, front) {
+  const t = reducedMotion ? 0 : time / 1000;
+  ctx.save(); ctx.lineCap = 'round';
+  for (let element = 0; element < 3; element++) {
+    const tilt = [0.08, -0.88, 0.65][element];
+    const rx = [66, 70, 63][element], ry = [20, 19, 24][element];
+    const point = angle => {
+      const x = Math.cos(angle) * rx, yy = Math.sin(angle) * ry;
+      return [x * Math.cos(tilt) - yy * Math.sin(tilt), -10 + x * Math.sin(tilt) + yy * Math.cos(tilt)];
+    };
+    for (let i = 0; i < 64; i++) {
+      const angle = i * Math.PI * 2 / 64;
+      if ((Math.sin(angle + Math.PI / 64) >= 0) !== front) continue;
+      const [x, yy] = point(angle), [nx, ny] = point(angle + Math.PI * 2 / 64 + 0.015);
+      const ripple = Math.sin(i * 1.8 - t * 7);
+      ctx.strokeStyle = ['#ed7c24', '#529dbb', '#d8f3ff90'][element];
+      ctx.lineWidth = [9 + ripple * 2, 7, 2][element];
+      ctx.beginPath(); ctx.moveTo(x, yy); ctx.lineTo(nx, ny); ctx.stroke();
+      if (element === 0) {
+        // A yellow-hot ribbon with orange flame tips rather than a flat halo.
+        ctx.fillStyle = '#ffb92e';
+        const flame = 6 + (1 + Math.sin(i * 2.3 - t * 9)) * 4;
+        ctx.beginPath(); ctx.moveTo(x - 3, yy);
+        ctx.quadraticCurveTo(x + 3, yy - flame * 0.5, x - 1 + ripple * 3, yy - flame);
+        ctx.quadraticCurveTo(nx + 2, ny - 3, nx + 3, ny + 2); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = '#fff17b'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(x, yy + 1); ctx.lineTo(nx, ny + 1); ctx.stroke();
+      } else if (element === 1) {
+        ctx.strokeStyle = '#a4e8f3'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(x - 1, yy - 1); ctx.lineTo(nx - 1, ny - 1); ctx.stroke();
+        if (i % 7 === 0) {
+          const [dx, dy] = point(angle + t * 0.5);
+          ctx.fillStyle = '#ddfbff'; ctx.beginPath(); ctx.arc(dx + 4, dy - 4, 1.5, 0, Math.PI * 2); ctx.fill();
+        }
+      }
+    }
+  }
+  ctx.restore();
+}
+function drawOrbitingStones(time, front) {
+  const t = reducedMotion ? 0 : time / 1000;
+  ctx.save();
+  for (let axis = 0; axis < 2; axis++) {
+    const tilt = axis === 0 ? -0.65 : 0.95;
+    for (let i = 0; i < 6; i++) {
+      const angle = i * Math.PI / 3 + t * (axis === 0 ? 1.2 : -0.95) + axis * 0.4;
+      const depth = Math.sin(angle);
+      if ((depth >= 0) !== front) continue;
+      const ox = Math.cos(angle) * 76, oy = depth * 23;
+      const x = ox * Math.cos(tilt) - oy * Math.sin(tilt);
+      const yy = -12 + ox * Math.sin(tilt) + oy * Math.cos(tilt);
+      ctx.save(); ctx.translate(x, yy); ctx.rotate(angle + axis);
+      const size = 3 + (i % 3) * 1.5 + (depth + 1) * 0.7;
+      ctx.fillStyle = front ? '#99714e' : '#b49977';
+      ctx.strokeStyle = front ? '#624c3b' : '#8d7965'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(-size, -size * 0.4); ctx.lineTo(-size * 0.3, -size);
+      ctx.lineTo(size * 0.8, -size * 0.6); ctx.lineTo(size, size * 0.4);
+      ctx.lineTo(0, size * 0.8); ctx.lineTo(-size * 0.9, size * 0.5);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = '#dbe3dd'; ctx.beginPath(); ctx.moveTo(-size * 0.5, -size * 0.3);
+      ctx.lineTo(0, -size * 0.6); ctx.lineTo(size * 0.5, -size * 0.3); ctx.stroke();
+      ctx.fillStyle = '#b49977'; ctx.fillRect(-size - 4, 1, 2, 2); ctx.fillRect(size + 3, -3, 1.5, 1.5);
+      ctx.restore();
+    }
+  }
+  ctx.restore();
+}
+function drawSparkle(x, yy, size, color) {
+  ctx.fillStyle = color;
+  ctx.beginPath(); ctx.moveTo(x, yy - size); ctx.lineTo(x + size * 0.3, yy - size * 0.3);
+  ctx.lineTo(x + size, yy); ctx.lineTo(x + size * 0.3, yy + size * 0.3);
+  ctx.lineTo(x, yy + size); ctx.lineTo(x - size * 0.3, yy + size * 0.3);
+  ctx.lineTo(x - size, yy); ctx.lineTo(x - size * 0.3, yy - size * 0.3);
+  ctx.closePath(); ctx.fill();
+}
+function drawElectricSpark(x, yy, size, color) {
+  ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.lineJoin = 'miter';
+  ctx.beginPath(); ctx.moveTo(x - size, yy + size);
+  ctx.lineTo(x - size * 0.2, yy - size * 0.3); ctx.lineTo(x + size * 0.3, yy + size * 0.2);
+  ctx.lineTo(x + size, yy - size); ctx.stroke();
+}
+function drawPokemonTrail(dt) {
+  const score = appearanceScore();
+  const pokemon = score >= 13 && score < 23;
+  ctx.save();
+  if (reducedMotion) {
+    if (pokemon) {
+      drawElectricSpark(63, y - 13, 5, '#f0bb32');
+      drawElectricSpark(44, y + 2, 4, '#fff6b0');
+      drawElectricSpark(26, y - 9, 3, '#f0bb32');
+    }
+  } else {
+    if (pokemon && state === 'playing') {
+      sparkleSpawn -= dt;
+      while (sparkleSpawn <= 0) {
+        sparkles.push({ x: 76, y: y - 3 + (Math.random() - 0.5) * 22,
+          vx: -1.4 - Math.random() * 1.2, vy: (Math.random() - 0.5) * 0.6,
+          life: 36, size: 3 + Math.random() * 3, phase: Math.random() * Math.PI });
+        sparkleSpawn += 3;
+      }
+    } else sparkleSpawn = 0;
+    for (const p of sparkles) {
+      p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt;
+      ctx.globalAlpha = Math.max(0, p.life / 36);
+      const twinkle = 0.7 + Math.sin(p.phase + p.life * 0.3) * 0.3;
+      drawElectricSpark(p.x, p.y, p.size * twinkle, p.size > 4.5 ? '#fff6b0' : '#f0bb32');
+    }
+    sparkles = sparkles.filter(p => p.life > 0);
+  }
+  ctx.restore();
+}
+function drawTrailParticle(p) {
+  ctx.save(); ctx.translate(p.x, p.y);
+  ctx.globalAlpha = (p.kind === 'menacing' ? 0.58 : 0.6) * Math.max(0, p.life / p.maxLife);
+  ctx.fillStyle = p.color; ctx.strokeStyle = p.color; ctx.lineWidth = 1.5;
+  switch (p.kind) {
+    case 'menacing':
+      ctx.rotate(-0.16); ctx.font = '500 17px MenacingSfx, sans-serif';
+      ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      ctx.strokeStyle = '#fff5e5'; ctx.lineWidth = 1.5; ctx.strokeText('ゴゴゴ', 0, 0);
+      ctx.fillText('ゴゴゴ', 0, 0);
+      break;
+    case 'energy':
+      drawElectricSpark(0, 0, p.size, p.color);
+      break;
+    case 'ember':
+      scenePolygon([[-p.size, p.size], [0, -p.size * 1.5], [p.size, p.size * 0.5]], p.color);
+      break;
+    case 'speed':
+    case 'sith':
+      ctx.beginPath(); ctx.moveTo(-p.size * 3, 1); ctx.lineTo(p.size, -1); ctx.stroke();
+      break;
+    case 'magic':
+      ctx.rotate(p.life * 0.03); ctx.beginPath(); ctx.arc(0, 0, p.size, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeRect(-p.size * 0.6, -p.size * 0.6, p.size * 1.2, p.size * 1.2);
+      break;
+    case 'elements':
+      ctx.beginPath(); ctx.arc(0, 0, p.size, 0.2, Math.PI * 1.7); ctx.stroke();
+      ctx.beginPath(); ctx.arc(0, 0, 1.5, 0, Math.PI * 2); ctx.fill();
+      break;
+    case 'paw':
+      ctx.beginPath(); ctx.ellipse(0, 2, p.size * 0.7, p.size * 0.55, 0, 0, Math.PI * 2); ctx.fill();
+      for (let i = 0; i < 3; i++) {
+        ctx.beginPath(); ctx.arc((i - 1) * p.size * 0.65, -p.size * 0.6 - (i === 1 ? 1 : 0), p.size * 0.28, 0, Math.PI * 2); ctx.fill();
+      }
+      break;
+    default:
+      ctx.beginPath(); ctx.arc(0, 0, p.size, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+}
+function drawLlamaTrail(dt) {
+  drawPokemonTrail(dt);
+  const style = trailStyles.find(style => appearanceScore() < style.until);
+  if (style.kind !== lastTrailKind) {
+    trailSpawn = 0; lastTrailKind = style.kind;
+  }
+  // Pokémon and Nyan Cat already have their own electric and rainbow trails.
+  const hasOwnTrail = style.kind === 'electric' || style.kind === 'rainbow';
+  if (reducedMotion) {
+    if (!hasOwnTrail) {
+      for (let i = 0; i < (style.kind === 'menacing' ? 2 : 3); i++) {
+        drawTrailParticle({ x: 62 - i * 24, y: y - 8 + i % 2 * 9, size: 4,
+          kind: style.kind, color: style.colors[i % style.colors.length], life: 1 - i * 0.2, maxLife: 1 });
+      }
+    }
+    return;
+  }
+  if (state === 'playing' && !hasOwnTrail) {
+    trailSpawn -= dt;
+    if (trailSpawn <= 0) {
+      const maxLife = style.kind === 'menacing' ? 85 : 45;
+      trailParticles.push({ x: style.kind === 'menacing' ? 55 : 76, y: y - 6 + (Math.random() - 0.5) * 26,
+        size: 3 + Math.random() * 2, kind: style.kind, color: style.colors[Math.floor(Math.random() * style.colors.length)],
+        life: maxLife, maxLife, vx: style.kind === 'menacing' ? -0.7 : -1.2 - Math.random() * 0.8 });
+      trailSpawn = style.kind === 'menacing' ? 19 : style.kind === 'paw' ? 10 : 5;
+    }
+  }
+  for (const p of trailParticles) {
+    p.x += p.vx * dt; p.y -= (p.kind === 'menacing' ? 0.12 : 0.25) * dt; p.life -= dt;
+    drawTrailParticle(p);
+  }
+  trailParticles = trailParticles.filter(p => p.life > 0 && p.x > -65);
+}
+function drawPokemonLlama(time) {
+  const t = reducedMotion ? 0 : time / 1000;
+  ctx.save(); ctx.translate(-43, -20 + Math.sin(t * 2.5) * 3);
+  const drawBalls = front => {
+    for (let i = 0; i < 3; i++) {
+      const angle = t * 1.8 + i * Math.PI * 2 / 3;
+      if ((Math.sin(angle) >= 0) !== front) continue;
+      ctx.save(); ctx.translate(Math.cos(angle) * 29, Math.sin(angle) * 12 - 7);
+      ctx.rotate(t + i); ctx.lineWidth = 1;
+      ctx.fillStyle = '#fffaf1'; ctx.beginPath(); ctx.arc(0, 0, 4, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#e55b66'; ctx.beginPath(); ctx.arc(0, 0, 4, Math.PI, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#454353'; ctx.beginPath(); ctx.arc(0, 0, 4, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-4, 0); ctx.lineTo(4, 0); ctx.stroke();
+      ctx.fillStyle = '#fffaf1'; ctx.beginPath(); ctx.arc(0, 0, 1.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.restore();
+    }
+  };
+  drawBalls(false);
+  // Pikachu: black-tipped ears, red cheeks and a lightning-bolt tail.
+  scenePolygon([[-12, 9], [-25, 4], [-21, -6], [-32, -13], [-23, -23], [-15, -14], [-19, -8], [-10, -2]], '#f4cd45');
+  rounded(-13, -9, 25, 29, 10, '#f4cd45');
+  rounded(-12, 16, 10, 5, 2, '#e7b93a'); rounded(5, 16, 10, 5, 2, '#e7b93a');
+  scenePolygon([[-10, -19], [-16, -43], [-9, -39], [-3, -20]], '#f4cd45');
+  scenePolygon([[6, -20], [17, -42], [19, -33], [13, -15]], '#f4cd45');
+  scenePolygon([[-16, -43], [-9, -39], [-7, -33], [-13, -33]], '#45404a');
+  scenePolygon([[17, -42], [19, -33], [15, -27], [12, -31]], '#45404a');
+  rounded(-15, -24, 31, 25, 10, '#f8d54c');
+  ctx.fillStyle = '#423d46';
+  for (const x of [-6, 8]) { ctx.beginPath(); ctx.ellipse(x, -15, 2.2, 3, 0, 0, Math.PI * 2); ctx.fill(); }
+  ctx.fillStyle = '#fffaf1';
+  for (const x of [-6, 8]) { ctx.beginPath(); ctx.arc(x + 0.5, -16, 0.8, 0, Math.PI * 2); ctx.fill(); }
+  ctx.fillStyle = '#df6061';
+  for (const x of [-11, 12]) { ctx.beginPath(); ctx.arc(x, -7, 3, 0, Math.PI * 2); ctx.fill(); }
+  ctx.strokeStyle = '#6a4b42'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, -9); ctx.lineTo(2, -9); ctx.moveTo(-2, -5);
+  ctx.quadraticCurveTo(1, -2, 4, -5); ctx.stroke();
+  rounded(-17, 0, 6, 12, 3, '#f8d54c'); rounded(11, -1, 6, 12, 3, '#f8d54c');
+  drawBalls(true);
+  ctx.restore();
+  // Ash's cap, blue vest, white sleeves and green fingerless gloves.
+  ctx.rotate(llamaTilt);
+  const coat = '#fff9ec';
+  rounded(-19, -9, 32, 24, 7, coat); rounded(4, -30, 13, 36, 5, coat);
+  rounded(4, -35, 25, 15, 5, coat);
+  rounded(5, -49, 5, 18, 2, coat); rounded(15, -48, 5, 17, 2, coat);
+  rounded(-14, 10, 6, 14, 2, '#587aa3'); rounded(3, 10, 6, 14, 2, '#587aa3');
+  rounded(-27, -12, 12, 6, 3, coat);
+  rounded(-18, -9, 31, 22, 5, '#367bc2'); rounded(4, -19, 13, 23, 4, '#367bc2');
+  rounded(-5, -9, 8, 21, 1, '#354c62'); rounded(-6, -9, 2, 21, 1, '#f5d36e');
+  rounded(-17, -7, 8, 7, 2, '#fff9ec'); rounded(6, -16, 8, 7, 2, '#fff9ec');
+  rounded(-16, -2, 7, 6, 2, '#69a46f'); rounded(7, -10, 7, 6, 2, '#69a46f');
+  rounded(3, -41, 22, 12, 4, '#da4e55'); rounded(2, -33, 31, 5, 2, '#da4e55');
+  rounded(13, -40, 11, 9, 2, '#fff9ec');
+  ctx.strokeStyle = '#478c73'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(16, -33); ctx.lineTo(18, -37); ctx.lineTo(21, -36); ctx.stroke();
+  ctx.fillStyle = '#344739'; ctx.beginPath(); ctx.arc(22, -26, 2, 0, Math.PI * 2); ctx.fill();
+}
+function drawJojoLlama(time) {
+  const t = reducedMotion ? 0 : time / 1000;
+  // Star Platinum floats upright behind Jotaro, independently of the hop tilt.
+  ctx.save(); ctx.translate(-39, -23 + Math.sin(t * 2.5) * 4);
+  const aura = ctx.createRadialGradient(0, -8, 5, 0, -8, 57);
+  aura.addColorStop(0, '#bd91ef55'); aura.addColorStop(1, '#9b73df00');
+  ctx.fillStyle = aura; ctx.fillRect(-57, -65, 114, 114);
+  ctx.globalAlpha *= 0.85;
+  // Muscular purple silhouette, raised fists, shoulder guards and bracers.
+  rounded(-12, 12, 10, 24, 4, '#805bb2'); rounded(3, 12, 10, 24, 4, '#805bb2');
+  rounded(-14, -25, 29, 41, 10, '#9974c9');
+  rounded(-23, -24, 12, 24, 6, '#926cc2'); rounded(14, -24, 12, 24, 6, '#926cc2');
+  rounded(-26, -13, 10, 18, 4, '#8259b0'); rounded(20, -18, 10, 18, 4, '#8259b0');
+  rounded(-28, -22, 14, 13, 5, '#b493dc'); rounded(19, -28, 14, 13, 5, '#b493dc');
+  rounded(-25, -8, 11, 5, 1, '#e2c16f'); rounded(20, -13, 11, 5, 1, '#e2c16f');
+  for (const x of [-19, 19]) {
+    ctx.fillStyle = '#e2c16f'; ctx.beginPath(); ctx.ellipse(x, -24, 9, 6, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#a382cf'; ctx.beginPath(); ctx.ellipse(x, -25, 6, 4, 0, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.strokeStyle = '#65448e'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(0, -19); ctx.lineTo(0, 4); ctx.moveTo(-9, -9); ctx.lineTo(10, -9);
+  ctx.moveTo(-7, -1); ctx.lineTo(8, -1); ctx.stroke();
+  scenePolygon([[-14, 10], [14, 10], [11, 23], [1, 18], [-9, 24]], '#e7e0d5');
+  rounded(-15, 7, 30, 5, 1, '#d8b25f');
+  // Wild dark hair, gold headband and stern eyes.
+  scenePolygon([[-12, -33], [-18, -42], [-10, -41], [-15, -53], [-5, -48], [0, -59], [5, -49], [15, -54], [12, -43], [20, -44], [13, -30]], '#343d57');
+  rounded(-9, -42, 20, 22, 6, '#b08bd8');
+  rounded(-11, -41, 24, 5, 1, '#e2c16f');
+  ctx.fillStyle = '#65aa9a'; ctx.beginPath(); ctx.arc(1, -39, 3, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#44365f'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(-6, -33); ctx.lineTo(-1, -32); ctx.moveTo(4, -32); ctx.lineTo(9, -34); ctx.stroke();
+  ctx.strokeStyle = '#ecf7e8'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(-5, -31); ctx.lineTo(-1, -31); ctx.moveTo(5, -31); ctx.lineTo(8, -32); ctx.stroke();
+  rounded(-10, -23, 24, 6, 2, '#b96677');
+  scenePolygon([[-10, -21], [-26, -18], [-36, -25 + Math.sin(t * 3) * 3], [-30, -13], [-9, -16]], '#b96677');
+  ctx.restore();
+  // Jotaro's long open coat retains the llama's silhouette and ears.
+  ctx.rotate(llamaTilt);
+  scenePolygon([[9, -24], [-15, -15], [-30, 27], [-8, 19], [1, 26], [15, 13]], '#262b3b');
+  rounded(-19, -9, 32, 24, 7, '#303548');
+  rounded(-14, 10, 6, 14, 2, '#303548'); rounded(3, 10, 6, 14, 2, '#303548');
+  rounded(4, -30, 13, 36, 5, '#f0d8b7'); rounded(4, -35, 25, 15, 5, '#f0d8b7');
+  rounded(5, -49, 5, 18, 2, '#303548'); rounded(15, -48, 5, 17, 2, '#303548');
+  rounded(-8, -8, 15, 20, 2, '#7ba297');
+  scenePolygon([[-19, -11], [-3, -16], [-9, 5], [-18, 12]], '#262b3b');
+  scenePolygon([[5, -16], [16, -21], [18, 9], [7, 4]], '#262b3b');
+  rounded(-17, 10, 28, 4, 1, '#c3a05a');
+  rounded(3, -41, 21, 12, 3, '#232938'); rounded(2, -33, 31, 5, 2, '#232938');
+  rounded(5, -34, 19, 2, 1, '#d9b866'); rounded(15, -39, 5, 5, 1, '#d9b866');
+  ctx.strokeStyle = '#d9b866'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(12, -20); ctx.lineTo(21, -16); ctx.lineTo(20, -7);
+  ctx.quadraticCurveTo(12, -4, 10, -11); ctx.stroke();
+  ctx.fillStyle = '#303044'; ctx.beginPath(); ctx.arc(22, -27, 2, 0, Math.PI * 2); ctx.fill();
+}
+function drawPopLlama(score, time) {
+  const t = reducedMotion ? 0 : time / 1000;
+  const doge = score >= 93, nyan = score >= 83 && !doge;
+  if (nyan) {
+    ['#ff647e', '#ffaf59', '#ffe66d', '#83df95', '#79c9fa', '#bb96ef'].forEach((color, i) => {
+      ctx.fillStyle = color;
+      for (let x = -105; x < -15; x += 8) {
+        ctx.fillRect(x, -14 + i * 5 + (reducedMotion ? 0 : Math.round(Math.sin(x / 18 + t * 8)) * 3), 8, 5);
+      }
+    });
+  }
+  ctx.rotate(llamaTilt);
+  if (!doge && !nyan) {
+    ctx.fillStyle = '#20212d'; ctx.beginPath(); ctx.moveTo(8, -25);
+    ctx.lineTo(-23, -19); ctx.lineTo(-48, 25 + Math.sin(t * 5) * 4);
+    ctx.lineTo(11, 19); ctx.closePath(); ctx.fill();
+  }
+  const coat = doge ? '#d8a454' : nyan ? '#9b9cae' : '#30323f';
+  rounded(-19, -9, 32, 24, 7, coat);
+  rounded(4, -30, 13, 36, 5, coat);
+  rounded(4, -35, 26, 17, 6, coat);
+  rounded(5, -48, 6, 17, 2, coat); rounded(16, -47, 6, 16, 2, coat);
+  rounded(-14, 10, 6, 14, 2, coat); rounded(3, 10, 6, 14, 2, coat);
+  if (nyan) {
+    // Pixel pastry, pink frosting and sprinkles; retain the llama's tall neck.
+    ctx.fillStyle = '#c58d61'; ctx.fillRect(-24, -13, 40, 31);
+    ctx.fillStyle = '#f7c995'; ctx.fillRect(-21, -11, 34, 27);
+    ctx.fillStyle = '#f19bc4'; ctx.fillRect(-18, -8, 28, 21);
+    ctx.fillStyle = '#cd528f';
+    for (const [x, yy] of [[-14, -4], [-5, 0], [4, -5], [-12, 7], [3, 9]]) ctx.fillRect(x, yy, 3, 3);
+    ctx.fillStyle = '#eea5b6'; ctx.fillRect(6, -45, 3, 9); ctx.fillRect(17, -44, 3, 9);
+    ctx.fillRect(24, -24, 4, 3);
+    ctx.fillStyle = '#36354d'; ctx.fillRect(21, -30, 3, 3);
+    ctx.fillRect(28, -27, 3, 2);
+    ctx.fillStyle = '#9b9cae'; ctx.fillRect(-31, -3, 9, 6); ctx.fillRect(-35, -8, 5, 9);
+  } else if (doge) {
+    rounded(9, -27, 24, 12, 5, '#f8e6bb');
+    ctx.fillStyle = '#f8e6bb'; ctx.beginPath(); ctx.ellipse(-2, 3, 10, 8, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#725237'; ctx.fillRect(7, -44, 2, 8); ctx.fillRect(18, -43, 2, 8);
+    ctx.fillStyle = '#302c30'; ctx.beginPath(); ctx.arc(23, -30, 2.5, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(31, -24, 3, 2.5, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#765135'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(18, -35); ctx.lineTo(24, -36); ctx.moveTo(22, -19); ctx.lineTo(28, -18); ctx.stroke();
+    ctx.strokeStyle = '#d8a454'; ctx.lineWidth = 6;
+    ctx.beginPath(); ctx.arc(-23, -8, 7, 0, Math.PI * 1.7); ctx.stroke();
+  } else {
+    // Vader's flared helmet, triangular respirator and chest controls.
+    rounded(1, -39, 30, 25, 10, '#171923');
+    ctx.fillStyle = '#171923'; ctx.beginPath(); ctx.moveTo(5, -35); ctx.lineTo(-3, -15);
+    ctx.lineTo(35, -15); ctx.lineTo(28, -35); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#697080'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(15, -37); ctx.lineTo(15, -27); ctx.lineTo(8, -18);
+    ctx.lineTo(23, -18); ctx.lineTo(15, -27); ctx.stroke();
+    ctx.fillStyle = '#7e8594'; ctx.fillRect(6, -30, 7, 3); ctx.fillRect(19, -30, 7, 3);
+    rounded(-10, -6, 18, 14, 2, '#12141e');
+    for (let i = 0; i < 3; i++) { ctx.fillStyle = ['#72bfc8', '#ed595f', '#e8e4d8'][i]; ctx.fillRect(-7 + i * 5, -2, 3, 5); }
+    ctx.strokeStyle = '#858792'; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(21, 8); ctx.lineTo(29, -1); ctx.stroke();
+    ctx.shadowColor = '#ff354c'; ctx.shadowBlur = 10; ctx.strokeStyle = '#ff4054'; ctx.lineWidth = 5;
+    ctx.beginPath(); ctx.moveTo(29, -1); ctx.lineTo(48, -39); ctx.stroke();
+    ctx.shadowBlur = 0; ctx.strokeStyle = '#fff0ed'; ctx.lineWidth = 2; ctx.stroke();
+  }
+}
+function drawOraBursts(dt) {
+  ctx.save(); ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
+  ctx.font = '900 27px OraSfx, "Noto Sans CJK JP", "Yu Gothic", sans-serif';
+  for (const burst of oraBursts) {
+    burst.life -= dt;
+    if (!reducedMotion) burst.y -= dt * 0.4;
+    ctx.save(); ctx.translate(burst.x, burst.y); ctx.rotate(-0.18);
+    ctx.globalAlpha = Math.max(0, Math.min(1, burst.life / 14));
+    ctx.strokeStyle = '#fff5e5'; ctx.lineWidth = 7; ctx.strokeText('オラッ！', 0, 0);
+    ctx.strokeStyle = '#30203e'; ctx.lineWidth = 3; ctx.strokeText('オラッ！', 0, 0);
+    ctx.fillStyle = '#b982df'; ctx.fillText('オラッ！', 0, 0);
+    ctx.strokeStyle = '#30203e'; ctx.lineWidth = 2;
+    for (let i = 0; i < 3; i++) {
+      ctx.beginPath(); ctx.moveTo(-7 - i * 5, -12 + i * 11); ctx.lineTo(-15 - i * 7, -18 + i * 14); ctx.stroke();
+    }
+    ctx.restore();
+  }
+  oraBursts = oraBursts.filter(burst => burst.life > 0);
+  ctx.restore();
+}
+function drawDogeWords(dt) {
+  if (appearanceScore() >= 103) dogeWords = [];
+  ctx.save(); ctx.textAlign = 'left'; ctx.font = 'bold 17px "Comic Sans MS", cursive';
+  for (const word of dogeWords) {
+    word.life -= dt;
+    if (!reducedMotion) word.y -= 0.45 * dt;
+    ctx.globalAlpha = Math.max(0, Math.min(1, word.life / 15));
+    ctx.strokeStyle = '#fff9ec'; ctx.lineWidth = 4; ctx.strokeText(word.text, 132, word.y);
+    ctx.fillStyle = ['#a53691', '#356bb5', '#8b5a16'][dogePhrases.indexOf(word.text)];
+    ctx.fillText(word.text, 132, word.y);
+  }
+  dogeWords = dogeWords.filter(word => word.life > 0);
+  ctx.restore();
+}
+function llama(time) {
+  const score = appearanceScore();
+  const ponyta = score >= 33 && score < 43;
+  const coat = score >= 33 ? '#fff9ec' : score >= 23 ? '#db783e' : '#fff9ec';
+  ctx.save(); ctx.translate(100, y);
+  if (invulnerable > 0 && state === 'playing') {
+    ctx.strokeStyle = '#ffffffcc'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.ellipse(0, -10, 38, 53, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.globalAlpha = 0.65;
+  }
+  if (score >= 13 && score < 23) {
+    drawPokemonLlama(time);
+    ctx.restore();
+    return;
+  }
+  if (score >= 103) {
+    drawJojoLlama(time);
+    ctx.restore();
+    return;
+  }
+  if (score >= 73) {
+    drawPopLlama(score, time);
+    ctx.restore();
+    return;
+  }
+  if (ponyta && ponytaArtwork.complete && ponytaArtwork.naturalWidth > 0) {
+    // Face the direction of travel. Crop transparent padding, not the artwork.
+    ctx.rotate(llamaTilt);
+    ctx.scale(-1, 1);
+    ctx.drawImage(ponytaArtwork, 68, 20, 340, 435, -33, -57, 66, 84);
+    ctx.restore();
+    return;
+  }
+  // Effects use the continuous frame timestamp in an upright local space.
+  // Hopping changes the body's tilt, not the aura or orbital animation phase.
+  drawLlamaEffects(time);
+  ctx.rotate(llamaTilt);
+  if (score >= 63) drawStrangeCloak(time);
+  if (score >= 43 && score < 53) {
+    const flutter = reducedMotion ? 0 : Math.sin(time / 180) * 5;
+    ctx.fillStyle = '#d92843';
+    ctx.beginPath(); ctx.moveTo(8, -21); ctx.lineTo(-9, -15);
+    ctx.bezierCurveTo(-30, -20, -43, -8 + flutter, -58, -15 + flutter);
+    ctx.lineTo(-49, 15 + flutter);
+    ctx.quadraticCurveTo(-19, 26, 8, -3); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#a51e38'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(2, -15); ctx.quadraticCurveTo(-24, 4, -48, 3 + flutter); ctx.stroke();
+  }
+  rounded(-19, -9, 32, 24, 9, coat);
+  rounded(4, -30, 13, 36, 6, coat);
+  rounded(4, -35, 24, 15, 6, coat);
+  rounded(5, -48, 5, 17, 2, coat); rounded(14, -47, 5, 16, 2, coat);
+  rounded(-14, 10, 6, 14, 2, coat); rounded(3, 10, 6, 14, 2, coat);
+  if (!ponyta) rounded(-27, -12, 12, 6, 3, coat);
+  if (score >= 43 && score < 53) {
+    rounded(-19, -9, 32, 24, 9, '#2275cf');
+    rounded(4, -21, 13, 25, 5, '#2275cf');
+    rounded(-14, 10, 6, 14, 2, '#d92843'); rounded(3, 10, 6, 14, 2, '#d92843');
+    rounded(-17, 9, 27, 4, 1, '#f7cf46');
+    ctx.fillStyle = '#f7cf46'; ctx.strokeStyle = '#d92843'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(-12, -6); ctx.lineTo(4, -6); ctx.lineTo(7, -2);
+    ctx.lineTo(-4, 9); ctx.lineTo(-15, -2); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#c51e39'; ctx.textAlign = 'center'; ctx.font = 'bold 12px system-ui';
+    ctx.fillText('S', -4, 4);
+  } else if (ponyta) {
+    for (const x of [-11, 6]) {
+      ponytaFlame(x, 16, 9, 14, x, time);
+      rounded(x - 3, 20, 6, 5, 1, '#565467');
+    }
+    // A small forelock overlays the crown, leaving the muzzle and eye clear.
+    drawPonytaForelock(time);
+  } else if (score >= 63) {
+    rounded(-19, -9, 32, 24, 9, '#245577');
+    rounded(4, -22, 13, 25, 5, '#245577');
+    ctx.strokeStyle = '#417b96'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(5, -8); ctx.lineTo(-9, 9);
+    ctx.moveTo(-12, -7); ctx.lineTo(4, 9); ctx.stroke();
+    rounded(-17, 9, 27, 4, 1, '#74523c');
+    rounded(-14, 17, 6, 7, 2, '#343b47'); rounded(3, 17, 6, 7, 2, '#343b47');
+    ctx.strokeStyle = '#d7aa53'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(6, -16); ctx.lineTo(-3, -3); ctx.lineTo(-12, -9); ctx.stroke();
+    ctx.fillStyle = '#dfb957'; ctx.beginPath(); ctx.ellipse(-3, -2, 5, 3.5, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#6dc29c'; ctx.beginPath(); ctx.arc(-3, -2, 1.5, 0, Math.PI * 2); ctx.fill();
+    // Dark swept hair, silver temple and a tiny pointed goatee.
+    rounded(4, -36, 17, 5, 2, '#343b47');
+    rounded(4, -34, 4, 11, 1, '#343b47'); rounded(4, -32, 2, 6, 1, '#b8c2c8');
+    ctx.fillStyle = '#343b47'; ctx.beginPath(); ctx.moveTo(17, -21);
+    ctx.lineTo(23, -21); ctx.lineTo(20, -16); ctx.closePath(); ctx.fill();
+  } else if (score >= 23 && score < 33) {
+    // Goku-inspired orange gi, blue sash and boots, and the 悟 insignia.
+    rounded(-19, -9, 32, 24, 9, '#e85e21');
+    rounded(5, -15, 11, 16, 3, '#254b8a');
+    rounded(-17, 9, 27, 4, 1, '#254b8a');
+    rounded(-14, 17, 6, 7, 2, '#254b8a'); rounded(3, 17, 6, 7, 2, '#254b8a');
+    ctx.fillStyle = '#fffaf0'; ctx.strokeStyle = '#263b50'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(-4, 0, 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#263b50'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = 'bold 12px GokuEmblem, "Noto Sans CJK SC", sans-serif';
+    ctx.fillText('悟', -4, 0);
+    ctx.textBaseline = 'alphabetic';
+  } else rounded(-13, -8, 20, 12, 3, '#e79373');
+  if (score >= 23 && score < 33) drawSuperSaiyanHair();
+  ctx.fillStyle = score >= 23 && score < 33 ? '#278f86' : '#344739';
+  ctx.beginPath(); ctx.arc(20, -29, 2, 0, Math.PI * 2); ctx.fill();
+  if (score >= 53 && score < 63) {
+    ctx.save();
+    // A dark socket and saturated blue rim keep the glowing eye distinct on cream.
+    ctx.fillStyle = '#173e67';
+    ctx.beginPath(); ctx.ellipse(20, -29, 4, 3.5, -0.12, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowColor = '#259dff'; ctx.shadowBlur = 6;
+    ctx.fillStyle = '#1686e8'; ctx.beginPath(); ctx.arc(20, -29, 2.8, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#f0fcff'; ctx.beginPath(); ctx.arc(20, -29, 1.5, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    ctx.save(); ctx.rotate(-llamaTilt);
+    drawAvatarElements(time, true);
+    drawOrbitingStones(time, true);
+    ctx.restore();
+  }
+  if (score >= 63) {
+    ctx.save(); ctx.rotate(-llamaTilt);
+    drawStrangeMagic(time, true);
+    ctx.restore();
+  }
+  ctx.restore();
+}
+function advanceWeather(time) {
+  if (state === 'playing' && weatherLast !== null) {
+    weatherElapsed += Math.max(0, time - weatherLast);
+  }
+  weatherLast = state === 'playing' ? time : null;
+}
+function weatherAt(elapsed) {
+  if (elapsed >= nextWeatherChange) {
+    previousWeather = currentWeather;
+    currentWeather = (currentWeather + 1 + Math.floor(Math.random() * (weatherTypes.length - 1))) % weatherTypes.length;
+    weatherChangedAt = Math.floor(elapsed / 8000) * 8000;
+    nextWeatherChange = weatherChangedAt + 8000;
+  }
+  const progress = Math.min(1, Math.max(0, (elapsed - weatherChangedAt) / 3000));
+  return {
+    current: weatherTypes[currentWeather],
+    previous: weatherTypes[previousWeather],
+    blend: progress * progress * (3 - 2 * progress)
+  };
+}
+function weatherScene(weather, time) {
+  const t = reducedMotion ? 0 : time / 1000;
+  ctx.fillStyle = weather.sky; ctx.fillRect(0, 0, 400, 560);
+  if (weather.sun || weather.moon) {
+    ctx.fillStyle = weather.sun || '#fff4cf';
+    ctx.beginPath(); ctx.arc(310, weather.name === 'Dusk' ? 330 : 90, 28, 0, Math.PI * 2); ctx.fill();
+    if (weather.moon) {
+      ctx.fillStyle = weather.sky; ctx.beginPath(); ctx.arc(322, 81, 25, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#fff4cf';
+      for (let i = 0; i < 24; i++) {
+        const x = (i * 83 + 19) % 400, yy = (i * 47 + 35) % 360;
+        ctx.beginPath(); ctx.arc(x, yy, 1 + (i % 2) * 0.5, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+  }
+  ctx.fillStyle = weather.cloud;
+  for (const [x, yy] of [[40, 105], [250, 65], [340, 190], [140, 155]]) {
+    const drift = ((x + t * (weather.wind ? 65 : 5) + 60) % 520) - 60;
+    ctx.beginPath(); ctx.ellipse(drift, yy, weather.rain ? 70 : 45, weather.rain ? 20 : 12, 0, 0, Math.PI * 2); ctx.fill();
+  }
+  if (weather.rain) {
+    ctx.strokeStyle = '#dbeef080'; ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for (let i = 0; i < 65; i++) {
+      const yy = (i * 71 + t * 230 * weather.rain) % 550;
+      const x = ((i * 97 - t * (weather.wind ? 190 : 35)) % 440 + 440) % 440 - 20;
+      ctx.moveTo(x, yy); ctx.lineTo(x - (weather.wind ? 25 : 5), yy + 14);
+    }
+    ctx.stroke();
+  }
+  if (weather.thunder) {
+    // A gently glowing background bolt, never a full-screen flash.
+    const glow = reducedMotion ? 0.3 : Math.pow(Math.max(0, Math.sin(t * Math.PI / 3)), 8) * 0.7;
+    ctx.strokeStyle = `rgba(255, 235, 171, ${glow})`; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(305, 135); ctx.lineTo(275, 195); ctx.lineTo(303, 190);
+    ctx.lineTo(267, 259); ctx.stroke();
+  }
+  if (weather.wind) {
+    ctx.strokeStyle = '#e3eef060'; ctx.lineWidth = 2;
+    for (let i = 0; i < 10; i++) {
+      const yy = 220 + i * 17, width = 75 - i * 5;
+      const sway = Math.sin(t * 2 + i * 0.6) * 12;
+      ctx.beginPath(); ctx.ellipse(300 + sway, yy, width, 9, -0.12, t * 2 + i, t * 2 + i + Math.PI * 1.5); ctx.stroke();
+    }
+  }
+  if (weather.snow || weather.dust) {
+    ctx.fillStyle = weather.snow ? '#ffffffcc' : '#f5ddb0aa';
+    for (let i = 0; i < 55; i++) {
+      const x = ((i * 97 + t * (weather.dust ? -100 : 12) + Math.sin(t + i) * 8) % 440 + 440) % 440 - 20;
+      const yy = (i * 71 + t * (weather.dust ? 20 : 35)) % 530;
+      ctx.beginPath(); ctx.ellipse(x, yy, weather.snow ? 2.5 : 7, 2, 0, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  if (weather.aurora) {
+    for (let i = 0; i < 4; i++) {
+      ctx.strokeStyle = ['#6ef5bb60', '#7be5ed60', '#b999f660', '#80eac860'][i]; ctx.lineWidth = 16;
+      const sway = Math.sin(t * 0.5 + i) * 18;
+      ctx.beginPath(); ctx.moveTo(-20, 125 + i * 24);
+      ctx.bezierCurveTo(110, 20 + sway, 240, 240 - sway, 420, 95 + i * 24); ctx.stroke();
+    }
+  }
+  if (weather.rainbow) {
+    ['#ed8888', '#efb37b', '#efda83', '#8ccf9b', '#83bae0', '#b49cdb'].forEach((color, i) => {
+      ctx.strokeStyle = color + '90'; ctx.lineWidth = 7;
+      ctx.beginPath(); ctx.arc(220, 350, 150 - i * 7, Math.PI, Math.PI * 2); ctx.stroke();
+    });
+    drawRainbowSleigh(t);
+  }
+  ctx.fillStyle = weather.hills; ctx.beginPath(); ctx.moveTo(0, 530); ctx.lineTo(0, 440);
+  ctx.quadraticCurveTo(100, 380, 210, 475); ctx.quadraticCurveTo(300, 400, 400, 455); ctx.lineTo(400, 530); ctx.fill();
+  if (weather.landmark) drawLandmark(weather.landmark, t);
+  if (weather.fog) {
+    ctx.fillStyle = '#eef4f055';
+    for (let i = 0; i < 5; i++) {
+      ctx.beginPath(); ctx.ellipse(200 + Math.sin(t * 0.25 + i) * 60, 220 + i * 65, 280, 38, 0, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+}
+function drawRainbowSleigh(t) {
+  const angle = Math.PI + 0.3 + (t * 0.17 + 0.7) % (Math.PI - 1.1);
+  ctx.save();
+  // Each rider follows the rainbow's curve, with hooves on its outer band.
+  ctx.strokeStyle = '#9b714e'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(220, 350, 161, angle + 0.07, angle + 0.57); ctx.stroke();
+  for (let i = 0; i < 3; i++) {
+    const a = angle + i * 0.28;
+    ctx.save(); ctx.translate(220 + Math.cos(a) * 154, 350 + Math.sin(a) * 154);
+    ctx.rotate(a + Math.PI / 2);
+    if (i === 0) {
+      // Gold runners, red sleigh, toy sack and a tiny bearded Santa.
+      ctx.strokeStyle = '#d8aa48'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(-16, -1); ctx.lineTo(12, -1);
+      ctx.quadraticCurveTo(20, -1, 19, -7); ctx.stroke();
+      ctx.fillStyle = '#bd354b'; ctx.beginPath(); ctx.moveTo(-15, -15);
+      ctx.lineTo(-11, -5); ctx.lineTo(11, -5); ctx.lineTo(17, -17);
+      ctx.lineTo(10, -14); ctx.lineTo(6, -10); ctx.lineTo(-8, -10); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#72905e'; ctx.beginPath(); ctx.ellipse(-10, -19, 8, 9, -0.3, 0, Math.PI * 2); ctx.fill();
+      rounded(-3, -24, 12, 14, 4, '#d94050');
+      ctx.fillStyle = '#f4d1ad'; ctx.beginPath(); ctx.arc(4, -29, 6, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#fff7e9'; ctx.beginPath(); ctx.moveTo(-1, -29);
+      ctx.quadraticCurveTo(0, -16, 10, -25); ctx.lineTo(10, -29); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#d94050'; ctx.beginPath(); ctx.moveTo(-2, -33);
+      ctx.lineTo(3, -43); ctx.lineTo(11, -33); ctx.closePath(); ctx.fill();
+      rounded(-3, -35, 15, 4, 2, '#fff7e9');
+      ctx.beginPath(); ctx.arc(3, -43, 2.5, 0, Math.PI * 2); ctx.fill();
+    } else {
+      const gallop = reducedMotion ? 0 : Math.sin(t * 12 + i * 1.5);
+      ctx.translate(0, reducedMotion ? 0 : -Math.abs(gallop) * 2);
+      ctx.strokeStyle = '#79563e'; ctx.lineWidth = 2; ctx.lineCap = 'round';
+      for (let leg = 0; leg < 4; leg++) {
+        const x = leg < 2 ? -7 : 5, stride = gallop * (leg % 2 ? -4 : 4);
+        ctx.beginPath(); ctx.moveTo(x, -10); ctx.lineTo(x + stride, -5);
+        ctx.lineTo(x + stride * 1.5 + 1, 0); ctx.stroke();
+      }
+      ctx.fillStyle = '#a67a50'; ctx.beginPath(); ctx.ellipse(-2, -15, 12, 6, 0, 0, Math.PI * 2); ctx.fill();
+      rounded(5, -28, 5, 15, 2, '#a67a50');
+      rounded(5, -30, 12, 6, 3, '#a67a50');
+      ctx.strokeStyle = '#79563e'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(8, -29); ctx.lineTo(6, -39); ctx.lineTo(2, -42);
+      ctx.moveTo(6, -36); ctx.lineTo(1, -36); ctx.moveTo(7, -34); ctx.lineTo(11, -39); ctx.stroke();
+      ctx.fillStyle = '#302d32'; ctx.beginPath(); ctx.arc(13, -28, 1, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = i === 2 ? '#e65358' : '#634b3e';
+      ctx.beginPath(); ctx.arc(17, -27, 2, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#c83c4c'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(-5, -20); ctx.lineTo(-2, -10); ctx.stroke();
+    }
+    ctx.restore();
+  }
+  ctx.restore();
+}
+function scenePolygon(points, color) {
+  ctx.fillStyle = color; ctx.beginPath();
+  points.forEach(([x, yy], i) => i ? ctx.lineTo(x, yy) : ctx.moveTo(x, yy));
+  ctx.closePath(); ctx.fill();
+}
+function drawWeatherLandmark(landmark, t) {
+  const windows = (x, yy, columns, rows, color) => {
+    ctx.fillStyle = color;
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < columns; col++) ctx.fillRect(x + col * 24, yy + row * 28, 9, 13);
+    }
+  };
+  switch (landmark) {
+    case 'windmill': {
+      scenePolygon([[239, 471], [250, 313], [282, 313], [298, 471]], '#e9dbbb');
+      scenePolygon([[242, 315], [266, 280], [291, 315]], '#9b685b');
+      rounded(260, 433, 16, 38, 5, '#806552');
+      windows(261, 371, 1, 1, '#79999a');
+      ctx.save(); ctx.translate(266, 331); ctx.rotate(t * 0.6 + 0.35);
+      for (let i = 0; i < 4; i++) {
+        ctx.rotate(Math.PI / 2); ctx.fillStyle = '#876f5a'; ctx.fillRect(-2, -76, 4, 76);
+        ctx.fillStyle = '#fff5da'; ctx.fillRect(2, -72, 13, 54);
+        ctx.strokeStyle = '#c6b69b'; ctx.lineWidth = 1;
+        for (let j = 0; j < 5; j++) { ctx.beginPath(); ctx.moveTo(2, -70 + j * 11); ctx.lineTo(15, -70 + j * 11); ctx.stroke(); }
+      }
+      ctx.fillStyle = '#876f5a'; ctx.beginPath(); ctx.arc(0, 0, 6, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+      for (let i = 0; i < 23; i++) {
+        const x = 12 + i * 17, yy = 485 + (i % 3) * 12;
+        ctx.strokeStyle = '#71905a'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(x, yy + 18); ctx.lineTo(x, yy); ctx.stroke();
+        ctx.fillStyle = '#edc65c'; ctx.beginPath(); ctx.arc(x, yy, 7, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#826342'; ctx.beginPath(); ctx.arc(x, yy, 3, 0, Math.PI * 2); ctx.fill();
+      }
+      break;
+    }
+    case 'observatory': {
+      scenePolygon([[125, 490], [227, 386], [328, 412], [400, 488]], '#384858');
+      rounded(236, 386, 104, 69, 3, '#788896');
+      ctx.fillStyle = '#a2b4bf'; ctx.beginPath(); ctx.arc(288, 386, 52, Math.PI, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#536a7e'; ctx.lineWidth = 8;
+      ctx.beginPath(); ctx.moveTo(288, 335); ctx.lineTo(288, 387); ctx.stroke();
+      ctx.save(); ctx.translate(289, 361); ctx.rotate(-0.55);
+      rounded(-8, -8, 63, 16, 3, '#cad8db'); rounded(45, -12, 12, 24, 2, '#5e7b91'); ctx.restore();
+      windows(253, 415, 3, 1, '#f2d18a');
+      rounded(278, 435, 17, 20, 3, '#41566c');
+      break;
+    }
+    case 'cottage':
+    case 'cabin': {
+      const snowy = landmark === 'cabin';
+      if (snowy) {
+        ctx.fillStyle = '#eef6ef'; ctx.beginPath(); ctx.ellipse(200, 503, 220, 38, 0, 0, Math.PI * 2); ctx.fill();
+      }
+      rounded(208, 383, 126, 94, 3, snowy ? '#98765e' : '#dfc6a0');
+      rounded(301, 339, 16, 42, 2, '#93776a');
+      scenePolygon([[193, 389], [271, 326], [350, 389]], snowy ? '#6d6160' : '#9c635a');
+      if (snowy) {
+        ctx.strokeStyle = '#f5fbf6'; ctx.lineWidth = 9; ctx.lineJoin = 'round';
+        ctx.beginPath(); ctx.moveTo(195, 385); ctx.lineTo(271, 326); ctx.lineTo(348, 385); ctx.stroke();
+        ctx.strokeStyle = '#795e4c'; ctx.lineWidth = 2;
+        for (let yy = 400; yy < 477; yy += 12) { ctx.beginPath(); ctx.moveTo(209, yy); ctx.lineTo(333, yy); ctx.stroke(); }
+      }
+      windows(225, 407, 2, 1, '#ffe4a3');
+      rounded(293, 427, 22, 50, 3, '#786356');
+      ctx.fillStyle = '#e2e4df66';
+      for (let i = 0; i < 4; i++) {
+        const rise = (t * 12 + i * 19) % 76;
+        ctx.beginPath(); ctx.ellipse(309 + Math.sin(rise / 19) * 9, 333 - rise, 7 + rise / 10, 6 + rise / 14, 0, 0, Math.PI * 2); ctx.fill();
+      }
+      if (snowy) {
+        for (const [yy, radius] of [[490, 17], [468, 12], [451, 9]]) {
+          ctx.fillStyle = '#fffdf4'; ctx.beginPath(); ctx.arc(137, yy, radius, 0, Math.PI * 2); ctx.fill();
+        }
+        rounded(126, 435, 22, 5, 1, '#455368'); rounded(131, 424, 13, 13, 2, '#455368');
+        rounded(126, 460, 22, 5, 2, '#c75d65');
+        scenePolygon([[140, 452], [154, 455], [140, 457]], '#dc9854');
+        ctx.fillStyle = '#455368'; ctx.beginPath(); ctx.arc(140, 449, 1.5, 0, Math.PI * 2); ctx.fill();
+      }
+      break;
+    }
+    case 'castle': {
+      scenePolygon([[133, 493], [216, 419], [326, 422], [400, 485]], '#927b90');
+      rounded(218, 342, 104, 107, 2, '#756b87');
+      for (const [x, yy] of [[198, 322], [253, 281], [310, 322]]) {
+        rounded(x, yy, 31, 124, 2, '#827590');
+        scenePolygon([[x - 7, yy + 2], [x + 15, yy - 43], [x + 38, yy + 2]], '#62546f');
+        ctx.strokeStyle = '#62546f'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(x + 15, yy - 43); ctx.lineTo(x + 15, yy - 62); ctx.stroke();
+        scenePolygon([[x + 16, yy - 61], [x + 34, yy - 55], [x + 16, yy - 48]], '#d6a1a1');
+        windows(x + 11, yy + 23, 1, 2, '#edc28e');
+      }
+      rounded(262, 413, 21, 36, 10, '#50475e');
+      break;
+    }
+    case 'haunted': {
+      scenePolygon([[161, 476], [173, 374], [264, 359], [312, 474]], '#363442');
+      scenePolygon([[159, 380], [206, 322], [269, 366]], '#282a38');
+      scenePolygon([[265, 474], [263, 309], [292, 302], [310, 474]], '#454052');
+      scenePolygon([[251, 314], [269, 249], [305, 306]], '#282a38');
+      scenePolygon([[180, 375], [176, 300], [194, 294], [204, 356]], '#454052');
+      scenePolygon([[165, 305], [179, 265], [205, 299]], '#282a38');
+      windows(185, 394, 3, 2, '#d9bb78'); windows(275, 330, 1, 2, '#d9bb78');
+      rounded(240, 438, 20, 36, 9, '#242733');
+      ctx.strokeStyle = '#4c4b58'; ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.moveTo(343, 487); ctx.lineTo(338, 381); ctx.lineTo(320, 351);
+      ctx.moveTo(339, 409); ctx.lineTo(362, 377); ctx.lineTo(368, 344); ctx.stroke();
+      break;
+    }
+    case 'lighthouse': {
+      ctx.fillStyle = '#7099a6'; ctx.fillRect(0, 458, 400, 72);
+      scenePolygon([[211, 485], [248, 433], [310, 428], [357, 493]], '#626d78');
+      scenePolygon([[254, 443], [265, 295], [286, 295], [301, 443]], '#f0e6d6');
+      scenePolygon([[260, 365], [263, 335], [290, 335], [293, 365]], '#bc6865');
+      rounded(259, 279, 34, 26, 2, '#f4d891');
+      scenePolygon([[252, 279], [276, 259], [300, 279]], '#626071');
+      const beam = 0.12 + (Math.sin(t * 0.8) + 1) * 0.06;
+      scenePolygon([[260, 284], [25, 223], [25, 334], [260, 297]], `rgba(255, 235, 170, ${beam})`);
+      ctx.strokeStyle = '#606779'; ctx.lineWidth = 3; ctx.strokeRect(257, 277, 38, 29);
+      windows(272, 385, 1, 1, '#7a8e9d');
+      ctx.strokeStyle = '#d1e2df99'; ctx.lineWidth = 3;
+      for (let i = 0; i < 7; i++) {
+        const x = (i * 69 - t * 23 + 440) % 440 - 20, yy = 468 + i % 3 * 20;
+        ctx.beginPath(); ctx.moveTo(x, yy); ctx.quadraticCurveTo(x + 16, yy - 10, x + 33, yy); ctx.stroke();
+      }
+      break;
+    }
+    case 'bridge': {
+      ctx.fillStyle = '#91b3b5'; ctx.fillRect(0, 479, 400, 51);
+      ctx.strokeStyle = '#7f8f8d'; ctx.lineWidth = 18;
+      ctx.beginPath(); ctx.moveTo(39, 466); ctx.quadraticCurveTo(199, 390, 361, 466); ctx.stroke();
+      for (const x of [92, 187, 281]) {
+        rounded(x, 446, 17, 59, 2, '#879693');
+      }
+      ctx.strokeStyle = '#a3afaa'; ctx.lineWidth = 9;
+      ctx.beginPath(); ctx.moveTo(36, 448); ctx.quadraticCurveTo(199, 370, 365, 448); ctx.stroke();
+      for (let i = 0; i < 13; i++) {
+        const u = i / 12, x = 38 + 325 * u, yy = 448 - 150 * u * (1 - u);
+        ctx.strokeStyle = '#9aa7a2'; ctx.lineWidth = 5;
+        ctx.beginPath(); ctx.moveTo(x, yy); ctx.lineTo(x, yy + 20); ctx.stroke();
+      }
+      break;
+    }
+    case 'igloos': {
+      ctx.fillStyle = '#b7d5df'; ctx.beginPath(); ctx.ellipse(237, 514, 210, 45, 0, 0, Math.PI * 2); ctx.fill();
+      for (const [x, yy, radius] of [[273, 463, 49], [152, 480, 33], [354, 487, 29]]) {
+        ctx.fillStyle = '#d9e9ef'; ctx.beginPath(); ctx.arc(x, yy, radius, Math.PI, Math.PI * 2); ctx.fill();
+        ctx.save(); ctx.beginPath(); ctx.arc(x, yy, radius, Math.PI, Math.PI * 2); ctx.clip();
+        ctx.strokeStyle = '#9fbfce'; ctx.lineWidth = 1.5;
+        for (let row = 1; row < 4; row++) {
+          const lineY = yy - row * radius / 4;
+          ctx.beginPath(); ctx.moveTo(x - radius, lineY); ctx.lineTo(x + radius, lineY); ctx.stroke();
+          for (let col = -2; col <= 2; col++) {
+            const lineX = x + col * radius / 2 + row % 2 * radius / 4;
+            ctx.beginPath(); ctx.moveTo(lineX, lineY); ctx.lineTo(lineX, lineY + radius / 4); ctx.stroke();
+          }
+        }
+        ctx.restore();
+        rounded(x - 10, yy - 20, 24, 20, 10, '#8aaaba');
+        rounded(x - 5, yy - 15, 14, 15, 7, '#354e64');
+      }
+      ctx.strokeStyle = '#846c5c'; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(208, 510); ctx.lineTo(234, 500); ctx.moveTo(207, 500); ctx.lineTo(235, 510); ctx.stroke();
+      const flicker = reducedMotion ? 0 : Math.sin(t * 7) * 3;
+      scenePolygon([[211, 504], [213, 486], [220, 493], [225, 478 + flicker], [232, 503]], '#e8a465');
+      scenePolygon([[216, 504], [223, 490], [228, 504]], '#ffe1a2');
+      break;
+    }
+    case 'pyramids': {
+      scenePolygon([[37, 462], [152, 277], [267, 462]], '#cba877');
+      scenePolygon([[152, 277], [179, 462], [267, 462]], '#af895f');
+      scenePolygon([[210, 465], [290, 335], [371, 465]], '#d8b686');
+      scenePolygon([[290, 335], [308, 465], [371, 465]], '#b7946b');
+      rounded(247, 461, 105, 27, 12, '#c6a174');
+      rounded(233, 444, 34, 39, 8, '#d4b283');
+      scenePolygon([[230, 451], [235, 413], [257, 411], [271, 451]], '#c19a6d');
+      rounded(238, 419, 20, 28, 5, '#dfbf90');
+      ctx.strokeStyle = '#ad885f'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(243, 429); ctx.lineTo(247, 429); ctx.moveTo(252, 429); ctx.lineTo(256, 429);
+      ctx.moveTo(247, 440); ctx.lineTo(254, 440); ctx.stroke();
+      rounded(236, 479, 91, 8, 3, '#dfbf90');
+      ctx.fillStyle = '#d5b68b'; ctx.beginPath(); ctx.ellipse(300, 502, 140, 23, 0, 0, Math.PI * 2); ctx.fill();
+      break;
+    }
+    default: return false;
+  }
+  return true;
+}
+function drawLandmark(landmark, t) {
+  ctx.save();
+  if (drawWeatherLandmark(landmark, t)) { ctx.restore(); return; }
+  if (landmark === 'mordor') {
+    ctx.fillStyle = '#29252e'; ctx.beginPath(); ctx.moveTo(165, 465); ctx.lineTo(295, 213);
+    ctx.lineTo(328, 218); ctx.lineTo(400, 450); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#e98749'; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(304, 222);
+    ctx.lineTo(281, 284); ctx.lineTo(307, 325); ctx.lineTo(271, 407); ctx.stroke();
+    ctx.fillStyle = '#201f29'; ctx.beginPath(); ctx.moveTo(65, 475); ctx.lineTo(84, 218);
+    ctx.lineTo(77, 155); ctx.lineTo(96, 177); ctx.lineTo(104, 211); ctx.lineTo(115, 177);
+    ctx.lineTo(130, 155); ctx.lineTo(123, 220); ctx.lineTo(148, 475); ctx.closePath(); ctx.fill();
+    const glow = ctx.createRadialGradient(104, 173, 4, 104, 173, 68);
+    glow.addColorStop(0, '#ffd26fbb'); glow.addColorStop(1, '#ef702900');
+    ctx.fillStyle = glow; ctx.fillRect(36, 105, 136, 136);
+    ctx.fillStyle = '#f48936'; ctx.beginPath(); ctx.moveTo(74, 174);
+    ctx.quadraticCurveTo(104, 145, 135, 174); ctx.quadraticCurveTo(104, 198, 74, 174); ctx.fill();
+    ctx.fillStyle = '#ffd66a'; ctx.beginPath(); ctx.ellipse(104, 173, 10, 19, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#29202a'; ctx.beginPath(); ctx.ellipse(104, 173, 3, 18, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#ee8245'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(0, 507);
+    ctx.bezierCurveTo(120, 470, 220, 541, 400, 483); ctx.stroke();
+    ctx.fillStyle = '#e9a37388';
+    for (let i = 0; i < 25; i++) ctx.fillRect((i * 97 + t * 13) % 400, 530 - (i * 43 + t * 22) % 400, 2, 3);
+  } else if (landmark === 'japan') {
+    ctx.fillStyle = '#8b9fbf'; ctx.beginPath(); ctx.moveTo(95, 402); ctx.lineTo(256, 164);
+    ctx.lineTo(400, 402); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#fff8f4'; ctx.beginPath(); ctx.moveTo(256, 164); ctx.lineTo(212, 229);
+    ctx.lineTo(237, 218); ctx.lineTo(250, 238); ctx.lineTo(269, 218); ctx.lineTo(296, 230); ctx.closePath(); ctx.fill();
+    for (const x of [57, 181]) rounded(x, 345, 12, 168, 2, '#be493e');
+    rounded(37, 343, 177, 14, 3, '#cf5147'); rounded(48, 375, 154, 10, 2, '#be493e');
+    ctx.strokeStyle = '#553e42'; ctx.lineWidth = 9; ctx.beginPath(); ctx.moveTo(28, 330);
+    ctx.quadraticCurveTo(120, 348, 223, 330); ctx.stroke();
+    for (const x of [15, 355]) {
+      ctx.strokeStyle = '#79606a'; ctx.lineWidth = 9; ctx.beginPath(); ctx.moveTo(x, 500);
+      ctx.lineTo(x + 10, 310); ctx.lineTo(x - 28, 277); ctx.moveTo(x + 9, 334); ctx.lineTo(x + 45, 286); ctx.stroke();
+      for (let i = 0; i < 9; i++) {
+        ctx.fillStyle = ['#f2b8ce', '#f8cede', '#eaa3bf'][i % 3];
+        ctx.beginPath(); ctx.arc(x - 35 + (i * 23) % 100, 275 + (i * 17) % 63, 23, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+    ctx.fillStyle = '#ffe1ec';
+    for (let i = 0; i < 24; i++) {
+      const x = (i * 83 + t * 18) % 400, yy = (i * 67 + t * 25) % 520;
+      ctx.beginPath(); ctx.ellipse(x, yy, 4, 2, i + t, 0, Math.PI * 2); ctx.fill();
+    }
+  } else if (landmark === 'antarctica') {
+    ctx.fillStyle = '#91c4dc'; ctx.beginPath(); ctx.moveTo(0, 439); ctx.lineTo(43, 317);
+    ctx.lineTo(91, 385); ctx.lineTo(148, 293); ctx.lineTo(226, 439); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#f1fbff'; ctx.beginPath(); ctx.moveTo(103, 367); ctx.lineTo(148, 293);
+    ctx.lineTo(188, 368); ctx.lineTo(147, 346); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#eaf7fc'; ctx.beginPath(); ctx.ellipse(220, 516, 240, 65, 0, 0, Math.PI * 2); ctx.fill();
+    for (let i = 0; i < 6; i++) {
+      const x = ((i * 71 + t * (i % 2 ? -8 : 10)) % 440 + 440) % 440 - 20;
+      const yy = 477 + (i % 3) * 17, waddle = Math.sin(t * 5 + i) * 2;
+      ctx.save(); ctx.translate(x, yy); ctx.rotate(i === 4 ? -1.25 : waddle * 0.045);
+      ctx.fillStyle = '#edaa55'; ctx.fillRect(-9, 10, 7, 3); ctx.fillRect(3, 10, 7, 3);
+      ctx.fillStyle = '#344354'; ctx.beginPath(); ctx.ellipse(0, 0, 10, 15, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#fffaf0'; ctx.beginPath(); ctx.ellipse(1, 3, 6, 10, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#edaa55'; ctx.beginPath(); ctx.moveTo(6, -9); ctx.lineTo(15, -6); ctx.lineTo(7, -3); ctx.fill();
+      ctx.fillStyle = '#fffaf0'; ctx.beginPath(); ctx.arc(5, -10, 2, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+  } else if (landmark === 'dso') {
+    // Stylized SP20 facade and the Brain Tree fountain in its forecourt.
+    rounded(30, 266, 300, 206, 4, '#cbd4d5');
+    rounded(45, 279, 270, 181, 2, '#718e9d');
+    for (let row = 0; row < 8; row++) {
+      ctx.fillStyle = '#dce4df'; ctx.fillRect(40, 281 + row * 22, 280, 5);
+    }
+    for (let col = 0; col < 10; col++) {
+      ctx.fillStyle = '#b0c2c5'; ctx.fillRect(48 + col * 28, 279, 4, 181);
+    }
+    rounded(155, 418, 55, 54, 3, '#4e6d7e');
+    rounded(30, 255, 300, 23, 3, '#ebeee7');
+    ctx.fillStyle = '#466779'; ctx.font = 'bold 12px system-ui'; ctx.textAlign = 'left';
+    ctx.fillText('DSO', 46, 271); ctx.font = '10px system-ui'; ctx.fillText('SP20', 279, 271);
+    ctx.fillStyle = '#cdd5c7'; ctx.fillRect(0, 472, 400, 58);
+    for (const x of [18, 360, 387]) {
+      rounded(x - 3, 436, 6, 42, 2, '#827b64');
+      ctx.fillStyle = '#7fa58b'; ctx.beginPath(); ctx.arc(x, 432, 19, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.fillStyle = '#91a6a6'; ctx.beginPath(); ctx.ellipse(277, 496, 66, 17, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#add9dd'; ctx.beginPath(); ctx.ellipse(277, 491, 59, 12, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#718b8a'; ctx.lineWidth = 8;
+    ctx.beginPath(); ctx.moveTo(277, 488); ctx.bezierCurveTo(270, 461, 282, 447, 276, 425); ctx.stroke();
+    ctx.lineWidth = 3;
+    for (let i = 0; i < 11; i++) {
+      const angle = Math.PI + i * Math.PI / 10;
+      const x = 277 + Math.cos(angle) * 38, yy = 433 + Math.sin(angle) * 28;
+      ctx.strokeStyle = '#718b8a'; ctx.beginPath(); ctx.moveTo(277, 465);
+      ctx.quadraticCurveTo(277 + Math.cos(angle) * 12, 435, x, yy); ctx.stroke();
+      ctx.strokeStyle = '#c4d2c7'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.ellipse(x, yy, 9, 7, angle, 0, Math.PI * 2); ctx.stroke();
+    }
+    ctx.strokeStyle = '#e4f7f5aa'; ctx.lineWidth = 1.5;
+    for (let i = 0; i < 7; i++) {
+      const x = 244 + i * 11;
+      ctx.beginPath(); ctx.moveTo(x, 432); ctx.quadraticCurveTo(x + 12, 456, x + 8, 488); ctx.stroke();
+      const drop = (t * 35 + i * 9) % 53;
+      ctx.fillStyle = '#f1ffff'; ctx.fillRect(x + 5, 435 + drop, 2, 3);
+    }
+    ctx.fillStyle = '#486773'; ctx.font = '9px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText('BRAIN TREE', 277, 520);
+  } else {
+    // Three hotel towers and the boat-shaped SkyPark above Marina Bay.
+    ctx.fillStyle = '#7eaebc'; ctx.fillRect(0, 456, 400, 74);
+    for (const [x, height] of [[131, 188], [207, 196], [283, 190]]) {
+      rounded(x, 445 - height, 43, height, 5, '#cbd8dd');
+      rounded(x + 8, 450 - height, 25, height - 5, 2, '#7998ae');
+      for (let row = 0; row < 18; row++) {
+        ctx.fillStyle = '#e3ded8'; ctx.fillRect(x + 6, 455 - height + row * 10, 31, 2);
+      }
+      ctx.fillStyle = '#ecded0'; ctx.fillRect(x + 20, 450 - height, 3, height - 5);
+    }
+    ctx.fillStyle = '#d8dcd4'; ctx.beginPath(); ctx.moveTo(107, 247);
+    ctx.quadraticCurveTo(208, 229, 349, 243); ctx.quadraticCurveTo(331, 264, 297, 264);
+    ctx.lineTo(139, 264); ctx.quadraticCurveTo(119, 260, 107, 247); ctx.fill();
+    ctx.strokeStyle = '#7ba8ad'; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(143, 246); ctx.lineTo(281, 246); ctx.stroke();
+    for (let i = 0; i < 10; i++) {
+      ctx.fillStyle = '#6e9882'; ctx.beginPath(); ctx.arc(154 + i * 16, 240, 4, 0, Math.PI * 2); ctx.fill();
+    }
+    // Low waterfront skyline and the ArtScience Museum's lotus silhouette.
+    ctx.fillStyle = '#b0c1cf';
+    for (let i = 0; i < 5; i++) ctx.fillRect(i * 22, 401 - (i % 3) * 17, 17, 55 + (i % 3) * 17);
+    ctx.fillStyle = '#f0e7de';
+    for (let i = 0; i < 5; i++) {
+      ctx.beginPath(); ctx.ellipse(81 + (i - 2) * 8, 436 - Math.abs(i - 2) * 3, 7, 19, (i - 2) * 0.35, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.strokeStyle = '#e9ddd880'; ctx.lineWidth = 2;
+    for (let i = 0; i < 9; i++) {
+      const x = (i * 53 + t * 6) % 420 - 20;
+      ctx.beginPath(); ctx.moveTo(x, 467 + (i % 4) * 15); ctx.lineTo(x + 30, 467 + (i % 4) * 15); ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+function drawWeather(time) {
+  const weather = weatherAt(time);
+  ctx.save();
+  weatherScene(weather.previous, time);
+  ctx.globalAlpha = weather.blend;
+  weatherScene(weather.current, time);
+  ctx.restore();
+  if (state === 'playing') {
+    discoverScene(weather.previous);
+    if (weather.blend === 1) discoverScene(weather.current);
+  }
+}
+function paintSceneCard(index) {
+  const weather = weatherTypes[index], card = sceneCards[index];
+  const revealed = discoveredScenes.has(weather.name);
+  const preview = document.createElement('canvas');
+  preview.width = revealed ? 120 : 10; preview.height = revealed ? 108 : 9;
+  const gameContext = ctx;
+  try {
+    ctx = preview.getContext('2d');
+    ctx.scale(preview.width / 400, preview.height / 560);
+    weatherScene(weather, 0);
+  } finally { ctx = gameContext; }
+  const thumbnail = card.querySelector('canvas'), context = thumbnail.getContext('2d');
+  context.imageSmoothingEnabled = false;
+  context.drawImage(preview, 0, 0, thumbnail.width, thumbnail.height);
+  const label = revealed ? `✓ ${weather.name}` : '???';
+  card.querySelector('figcaption').textContent = label;
+  thumbnail.setAttribute('aria-label', revealed ? weather.name : 'Pixelated preview of an undiscovered world');
+}
+function discoverScene(weather) {
+  if (discoveredScenes.has(weather.name)) return;
+  discoveredScenes.add(weather.name);
+  try { localStorage.setItem('llama-scenes', JSON.stringify([...discoveredScenes])); } catch {}
+  paintSceneCard(weatherTypes.indexOf(weather));
+  updateDiscoveryCount();
+}
+function updateDiscoveryCount() {
+  document.getElementById('discovery-count').textContent = `${discoveredScenes.size} / ${weatherTypes.length} worlds discovered`;
+}
+function initSceneGallery() {
+  const grid = document.getElementById('scene-grid');
+  weatherTypes.forEach((weather, index) => {
+    const card = document.createElement('figure'); card.className = 'scene-card';
+    const thumbnail = document.createElement('canvas'); thumbnail.width = 120; thumbnail.height = 108;
+    thumbnail.setAttribute('role', 'img');
+    card.append(thumbnail, document.createElement('figcaption'));
+    grid.append(card); sceneCards.push(card); paintSceneCard(index);
+  });
+  updateDiscoveryCount();
+}
+function frame(time) {
+  const dt = last ? Math.min((time - last) / 16.667, 2) : 1; last = time;
+  advanceWeather(time);
+  if (state === 'playing') {
+    invulnerable = Math.max(0, invulnerable - dt);
+    velocity += 0.32 * dt; y += velocity * dt; spawn -= dt;
+    if (spawn <= 0) {
+      const top = 90 + Math.random() * 220;
+      pipes.push({ x: 410, top, passed: false, pink: Math.random() < 0.15 }); spawn = 105;
+    }
+    for (const p of pipes) {
+      p.x -= 2.5 * dt;
+      if (!p.passed && p.x + 54 < 80) {
+        p.passed = true; awardPoints(p.pink ? 3 : 1);
+      }
+      if (p.x < 124 && p.x + 54 > 82 && (y - 34 < p.top || y + 20 > p.top + 170)) loseLife(p);
+      if (state === 'over') break;
+    }
+    pipes = pipes.filter(p => p.x > -60);
+    if (y < 38 || y > 508) loseLife();
+    if (state === 'playing') y = Math.max(38, Math.min(508, y));
+  }
+  const targetTilt = Math.max(-0.3, Math.min(0.5, velocity * 0.055));
+  llamaTilt += (targetTilt - llamaTilt) * (1 - Math.exp(-0.14 * dt));
+  ctx.fillStyle = '#c9e9e5'; ctx.fillRect(0, 0, 400, 560);
+  ctx.save();
+  if (shake > 0) {
+    const strength = 7 * shake / 25;
+    ctx.translate(Math.sin(shake * 2.3) * strength, Math.cos(shake * 3.1) * strength);
+    shake = Math.max(0, shake - dt);
+  }
+  drawWeather(weatherElapsed);
+  for (const p of pipes) cactus(p.x, p.top, p.top + 170, p.pink);
+  const landmark = weatherTypes[currentWeather].landmark;
+  ctx.fillStyle = ['antarctica', 'cabin', 'igloos'].includes(landmark) ? '#dceff8' : landmark === 'mordor' ? '#403038' : '#e3cc99';
+  ctx.fillRect(0, 530, 400, 30);
+  drawLlamaTrail(dt);
+  llama(time);
+  drawDogeWords(dt);
+  drawOraBursts(dt);
+  rounded(168, 12, 64, 48, 14, '#fff9ecdd');
+  ctx.fillStyle = '#344739'; ctx.textAlign = 'center'; ctx.font = 'bold 36px system-ui'; ctx.fillText(score, 200, 52);
+  drawCelebration(dt);
+  drawImpact(dt);
+  ctx.restore();
+  rounded(12, 14, 112, 34, 12, '#fff9ecdd');
+  ctx.fillStyle = '#d96b7a'; ctx.textAlign = 'center'; ctx.font = '23px system-ui';
+  ctx.fillText(lives > 3 ? `♥ × ${lives}` : '♥'.repeat(lives) + '♡'.repeat(3 - lives), 68, 39);
+  if (lifeBonus > 0) {
+    ctx.save(); ctx.globalAlpha = Math.min(1, lifeBonus / 20);
+    rounded(250, 12, 138, 48, 14, '#fff9ec');
+    ctx.fillStyle = '#558c61'; ctx.font = 'bold 18px system-ui'; ctx.fillText('+1 life!', 319, 42);
+    ctx.restore(); lifeBonus = Math.max(0, lifeBonus - dt);
+  }
+  if (state !== 'playing') {
+    rounded(35, 310, 330, 135, 18, '#fff9ecf2');
+    ctx.font = 'bold 25px system-ui'; ctx.fillStyle = '#344739';
+    ctx.fillText(state === 'ready' ? 'Ready to hop?' : 'One more hop?', 200, 347);
+    ctx.font = '16px system-ui';
+    ctx.fillText(state === 'ready' ? 'Tap or press Space to start' : `Score: ${score}  ·  Best: ${best}`, 200, 380);
+    ctx.font = '14px system-ui';
+    ctx.fillText(state === 'ready' ? 'Fly through the cactus gaps' : 'Press Enter or click Play again below', 200, 413);
+  }
+  drawLastLifeWarning(time);
+  requestAnimationFrame(frame);
+}
+initSceneGallery();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
