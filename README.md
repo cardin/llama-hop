@@ -1,5 +1,15 @@
 # Llama Hop
 
+<p align="center">
+  <a href="https://cardin.github.io/llama-hop/"><strong>▶ Play Llama Hop</strong></a>
+</p>
+
+<p align="center">
+  <a href="https://cardin.github.io/llama-hop/">
+    <img src="screenshot.png" alt="Llama Hop gameplay screenshot" width="860">
+  </a>
+</p>
+
 A desktop-friendly canvas game: hop through cactus gaps, discover new worlds,
 and unlock pop-culture llama transformations. No build step or dependencies.
 
@@ -19,25 +29,20 @@ Open <http://localhost:8080>. Click or press Space / Arrow Up to hop.
 - **Clear game state** resets progress after confirmation.
 - All scene and character animations are always enabled.
 
-## Deploy to GitHub Pages
+## GitHub Pages
 
-The game is ready to serve as a Pages site: `index.html` is at the repository
-root, every asset path is relative, and `.nojekyll` disables Jekyll processing.
+The game is published at <https://cardin.github.io/llama-hop/> from the public
+repository's `main` branch, root folder. `.nojekyll` disables Jekyll processing.
 
-1. Make the repository public if it is private. GitHub Pages on the Free plan
-   only publishes from public repositories.
-2. Open **Settings → Pages** and set **Source** to **Deploy from a branch**.
-3. Choose branch `main` and folder `/ (root)`, then save.
-4. The game is published at <https://cardin.github.io/llama-hop/>.
-
-No build step, workflow, or dependency install is required. Every push to
-`main` republishes the site.
+There is no build step, workflow, or dependency install. Every push to `main`
+republishes the site.
 
 ## Code layout
 
 - `index.html` — page structure and controls.
 - `styles.css` — layout, typography, and local fonts.
 - `favicon.svg` — browser tab icon.
+- `screenshot.png` — README gameplay screenshot.
 - `js/config.js` — scene palettes, trail settings, and the final transformation score.
 - `js/canvas.js` — shared drawing helpers and temporary preview contexts.
 - `js/scenes.js` — weather, scenery, and a named renderer for each world.
