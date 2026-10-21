@@ -19,6 +19,20 @@ Open <http://localhost:8080>. Click or press Space / Arrow Up to hop.
 - **Clear game state** resets progress after confirmation.
 - All scene and character animations are always enabled.
 
+## Deploy to GitHub Pages
+
+The game is ready to serve as a Pages site: `index.html` is at the repository
+root, every asset path is relative, and `.nojekyll` disables Jekyll processing.
+
+1. Make the repository public if it is private. GitHub Pages on the Free plan
+   only publishes from public repositories.
+2. Open **Settings → Pages** and set **Source** to **Deploy from a branch**.
+3. Choose branch `main` and folder `/ (root)`, then save.
+4. The game is published at <https://cardin.github.io/llama-hop/>.
+
+No build step, workflow, or dependency install is required. Every push to
+`main` republishes the site.
+
 ## Code layout
 
 - `index.html` — page structure and controls.
