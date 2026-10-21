@@ -29,43 +29,12 @@ Open <http://localhost:8080>. Click or press Space / Arrow Up to hop.
 - **Clear game state** resets progress after confirmation.
 - All scene and character animations are always enabled.
 
-## GitHub Pages
+## Development
 
-The game is published at <https://cardin.github.io/llama-hop/> from the public
-repository's `main` branch, root folder. `.nojekyll` disables Jekyll processing.
+No build step: edit files under `js/` and reload the local server. Run
+`npm test` with Node.js for the dependency-free test suite.
 
-There is no build step, workflow, or dependency install. Every push to `main`
-republishes the site.
-
-## Code layout
-
-- `index.html` — page structure and controls.
-- `styles.css` — layout, typography, and local fonts.
-- `favicon.svg` — browser tab icon.
-- `screenshot.png` — README gameplay screenshot.
-- `js/config.js` — scene palettes, trail settings, and the final transformation score.
-- `js/canvas.js` — shared drawing helpers and temporary preview contexts.
-- `js/scenes.js` — weather, scenery, and a named renderer for each world.
-- `js/scenes/` — standalone scene artwork, including Jurassic's dinosaurs and jungle.
-- `js/llama.js` — character artwork, trails, and hop effects.
-- `js/transformations.js` — appearance cycles, independent of the actual score.
-- `js/game.js` — input, scoring, lives, resets, and the animation loop.
-- `js/gallery.js` — pixelated previews and scene discoveries.
-- `js/storage.js` — best scores and discoveries in browser local storage.
-
-To rename a world, edit its `name` in `js/config.js`. Discoveries are keyed by
-the current name; old names are not translated or migrated.
-
-Serve the whole directory. The runtime needs `index.html`, `styles.css`,
-`favicon.svg`, `js/`, and the three font files. ES modules require HTTP serving
-rather than opening `index.html` as a local file. There is no build step and no
-runtime dependency to install.
-
-## Tests
-
-With Node.js installed, run `npm test`. The tests use Node's built-in test runner
-and recording canvas adapters; no packages need to be installed. They cover game
-rules, reset behavior, persistence, scene dispatch, and character effects.
+## Attribution
 
 See `ASSETS.md` and the bundled font licenses for asset attribution; character
 references belong to their respective rights holders.
