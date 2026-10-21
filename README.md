@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="https://cardin.github.io/llama-hop/">
-    <img src="screenshot.png" alt="Llama Hop gameplay screenshot" width="860">
+    <img src="assets/screenshot.png" alt="Llama Hop gameplay screenshot" width="860">
   </a>
 </p>
 

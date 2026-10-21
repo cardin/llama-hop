@@ -1,18 +1,18 @@
 @font-face {
   font-family: GokuEmblem;
-  src: url('./goku-emblem.ttf') format('truetype');
+  src: url('./assets/goku-emblem.ttf') format('truetype');
   font-weight: 700;
 }
 
 @font-face {
   font-family: OraSfx;
-  src: url('./ora-sfx.ttf') format('truetype');
+  src: url('./assets/ora-sfx.ttf') format('truetype');
   font-weight: 900;
 }
 
 @font-face {
   font-family: MenacingSfx;
-  src: url('./menacing-sfx.ttf') format('truetype');
+  src: url('./assets/menacing-sfx.ttf') format('truetype');
   font-weight: 500;
 }
 
