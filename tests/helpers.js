@@ -8,7 +8,7 @@ export function memoryStorage(entries = {}) {
 }
 
 // A recording canvas tests drawing paths without native graphics dependencies.
-// Pixel-level rendering is checked separately in a real browser.
+// Pixel output is not asserted here; these adapters only record draw calls.
 export function drawingContext() {
   const calls = [];
   const stack = [];

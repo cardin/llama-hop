@@ -517,7 +517,7 @@ export function createLlamaRenderer() {
     if (style.kind !== lastTrailKind) {
       trailSpawn = 0; lastTrailKind = style.kind;
     }
-    // Pokémon and Nyan Cat already have their own electric and rainbow trails.
+    // Pikachu and Nyan Cat already have their own electric and rainbow trails.
     const hasOwnTrail = style.kind === 'electric' || style.kind === 'rainbow';
     if (state === 'playing' && !hasOwnTrail) {
       trailSpawn -= dt;

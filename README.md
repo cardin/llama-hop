@@ -37,6 +37,7 @@ No build step, workflow, or dependency install is required. Every push to
 
 - `index.html` — page structure and controls.
 - `styles.css` — layout, typography, and local fonts.
+- `favicon.svg` — browser tab icon.
 - `js/config.js` — scene palettes, trail settings, and the final transformation score.
 - `js/canvas.js` — shared drawing helpers and temporary preview contexts.
 - `js/scenes.js` — weather, scenery, and a named renderer for each world.
@@ -50,9 +51,10 @@ No build step, workflow, or dependency install is required. Every push to
 To rename a world, edit its `name` in `js/config.js`. Discoveries are keyed by
 the current name; old names are not translated or migrated.
 
-Serve the whole directory, including `js/`, `styles.css`, artwork, and fonts.
-ES modules require HTTP serving rather than opening `index.html` as a local file.
-There is still no build step and no runtime dependency to install.
+Serve the whole directory. The runtime needs `index.html`, `styles.css`,
+`favicon.svg`, `js/`, and the three font files. ES modules require HTTP serving
+rather than opening `index.html` as a local file. There is no build step and no
+runtime dependency to install.
 
 ## Tests
 
