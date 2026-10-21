@@ -908,67 +908,6 @@ function drawEgypt(t) {
   }
 }
 
-function drawBrainCanopy() {
-  ctx.save(); ctx.translate(277, 420);
-  for (const side of [-1, 1]) {
-    ctx.save(); ctx.scale(side, 1);
-    const surface = ctx.createLinearGradient(0, -30, 0, 29);
-    surface.addColorStop(0, '#e1c6c5'); surface.addColorStop(0.6, '#c9abad'); surface.addColorStop(1, '#ab969f');
-    ctx.fillStyle = surface; ctx.strokeStyle = '#947d8b'; ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.moveTo(3, -23);
-    ctx.bezierCurveTo(13, -32, 25, -31, 30, -24);
-    ctx.bezierCurveTo(43, -26, 52, -16, 47, -5);
-    ctx.bezierCurveTo(56, 6, 48, 18, 39, 18);
-    ctx.bezierCurveTo(33, 30, 15, 30, 5, 20);
-    ctx.bezierCurveTo(-1, 10, 2, -9, 3, -23); ctx.closePath(); ctx.fill(); ctx.stroke();
-    ctx.strokeStyle = '#9a7e8a'; ctx.lineWidth = 2.3; ctx.lineCap = 'round';
-    ctx.beginPath(); ctx.moveTo(10, -20); ctx.bezierCurveTo(19, -27, 31, -20, 25, -12);
-    ctx.bezierCurveTo(20, -6, 35, -8, 39, -15);
-    ctx.moveTo(6, -5); ctx.bezierCurveTo(18, -10, 23, -1, 18, 6);
-    ctx.bezierCurveTo(14, 14, 25, 20, 36, 13);
-    ctx.moveTo(41, -3); ctx.bezierCurveTo(30, -1, 34, 8, 42, 9);
-    ctx.moveTo(10, 16); ctx.bezierCurveTo(15, 13, 10, 5, 7, 4); ctx.stroke();
-    ctx.restore();
-  }
-  ctx.strokeStyle = '#887786'; ctx.lineWidth = 2.5;
-  ctx.beginPath(); ctx.moveTo(0, -24); ctx.bezierCurveTo(-4, -10, 4, 6, 0, 22); ctx.stroke();
-  ctx.restore();
-}
-function drawDsoDetails(t) {
-  // Rooftop communications dish and a small research drone above the campus.
-  rounded(267, 239, 22, 16, 2, '#839ba5');
-  ctx.save(); ctx.translate(278, 235); ctx.rotate(-0.45);
-  ctx.fillStyle = '#b7c9ce'; ctx.beginPath(); ctx.ellipse(0, 0, 23, 10, 0, 0, Math.PI); ctx.fill();
-  ctx.strokeStyle = '#64808e'; ctx.lineWidth = 1.5;
-  ctx.beginPath(); ctx.ellipse(0, 0, 23, 10, 0, 0, Math.PI); ctx.moveTo(-23, 0); ctx.lineTo(23, 0);
-  ctx.moveTo(0, 8); ctx.lineTo(0, -15); ctx.stroke();
-  ctx.fillStyle = '#d7e5df'; ctx.beginPath(); ctx.arc(0, -15, 2, 0, Math.PI * 2); ctx.fill(); ctx.restore();
-  ctx.save(); ctx.translate(150 + Math.sin(t * 0.35) * 58, 185 + Math.sin(t * 0.8) * 5);
-  ctx.strokeStyle = '#617e8b'; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.moveTo(-16, -4); ctx.lineTo(16, 4); ctx.moveTo(-16, 4); ctx.lineTo(16, -4); ctx.stroke();
-  rounded(-7, -5, 14, 10, 3, '#dae8e7');
-  for (const x of [-17, 17]) {
-    ctx.strokeStyle = '#7c98a5'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.ellipse(x, -4, 8, 2.5, 0, 0, Math.PI * 2); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(x - Math.cos(t * 8) * 7, -4); ctx.lineTo(x + Math.cos(t * 8) * 7, -4); ctx.stroke();
-  }
-  ctx.fillStyle = '#6eada6'; ctx.beginPath(); ctx.arc(0, 3, 2, 0, Math.PI * 2); ctx.fill(); ctx.restore();
-  // An atom-inspired courtyard sculpture, seating and a tiny campus rover.
-  rounded(99, 492, 7, 17, 2, '#7d9298'); rounded(87, 506, 31, 5, 2, '#91a5a6');
-  ctx.save(); ctx.translate(103, 480); ctx.rotate(t * 0.25);
-  for (let i = 0; i < 3; i++) {
-    ctx.save(); ctx.rotate(i * Math.PI / 3); ctx.strokeStyle = ['#77aeb3', '#96b5b0', '#829fae'][i]; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.ellipse(0, 0, 21, 8, 0, 0, Math.PI * 2); ctx.stroke();
-    ctx.fillStyle = '#f3dca5'; ctx.beginPath(); ctx.arc(21, 0, 2, 0, Math.PI * 2); ctx.fill(); ctx.restore();
-  }
-  ctx.fillStyle = '#c2ddd7'; ctx.beginPath(); ctx.arc(0, 0, 4, 0, Math.PI * 2); ctx.fill(); ctx.restore();
-  rounded(38, 493, 31, 5, 1, '#8e9683'); rounded(41, 498, 3, 10, 1, '#748b84'); rounded(63, 498, 3, 10, 1, '#748b84');
-  const roverX = 157 + Math.sin(t * 0.2) * 18;
-  rounded(roverX, 507, 18, 8, 2, '#e6ebe0');
-  for (const dx of [3, 14]) { ctx.fillStyle = '#627e88'; ctx.beginPath(); ctx.arc(roverX + dx, 516, 3, 0, Math.PI * 2); ctx.fill(); }
-  ctx.strokeStyle = '#7e9aa4'; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(roverX + 9, 507); ctx.lineTo(roverX + 9, 499); ctx.stroke();
-}
 function drawSingaporeFlyer(t) {
   ctx.strokeStyle = '#9ba8b5'; ctx.lineWidth = 3;
   ctx.beginPath(); ctx.moveTo(33, 420); ctx.lineTo(57, 324); ctx.lineTo(82, 420); ctx.stroke();
@@ -1068,44 +1007,6 @@ function drawAntarctica(t) {
   }
 }
 
-function drawDso(t) {
-  // Stylized SP20 facade and the Brain Tree fountain in its forecourt.
-  rounded(30, 266, 300, 206, 4, '#cbd4d5');
-  rounded(45, 279, 270, 181, 2, '#718e9d');
-  for (let row = 0; row < 8; row++) {
-    ctx.fillStyle = '#dce4df'; ctx.fillRect(40, 281 + row * 22, 280, 5);
-  }
-  for (let col = 0; col < 10; col++) {
-    ctx.fillStyle = '#b0c2c5'; ctx.fillRect(48 + col * 28, 279, 4, 181);
-  }
-  rounded(155, 418, 55, 54, 3, '#4e6d7e');
-  rounded(30, 255, 300, 23, 3, '#ebeee7');
-  ctx.fillStyle = '#466779'; ctx.font = 'bold 12px system-ui'; ctx.textAlign = 'left';
-  ctx.fillText('DSO', 46, 271); ctx.font = '10px system-ui'; ctx.fillText('SP20', 279, 271);
-  ctx.fillStyle = '#cdd5c7'; ctx.fillRect(0, 472, 400, 58);
-  for (const x of [18, 360, 387]) {
-    rounded(x - 3, 436, 6, 42, 2, '#827b64');
-    ctx.fillStyle = '#7fa58b'; ctx.beginPath(); ctx.arc(x, 432, 19, 0, Math.PI * 2); ctx.fill();
-  }
-  ctx.fillStyle = '#91a6a6'; ctx.beginPath(); ctx.ellipse(277, 496, 66, 17, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = '#add9dd'; ctx.beginPath(); ctx.ellipse(277, 491, 59, 12, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.strokeStyle = '#718b8a'; ctx.lineWidth = 8;
-  ctx.beginPath(); ctx.moveTo(277, 488); ctx.bezierCurveTo(270, 461, 282, 447, 276, 425); ctx.stroke();
-  ctx.strokeStyle = '#718b8a'; ctx.lineWidth = 5;
-  ctx.beginPath(); ctx.moveTo(277, 465); ctx.lineTo(251, 441); ctx.moveTo(277, 465); ctx.lineTo(303, 441); ctx.stroke();
-  drawBrainCanopy();
-  ctx.strokeStyle = '#e4f7f5aa'; ctx.lineWidth = 1.5;
-  for (let i = 0; i < 7; i++) {
-    const x = 244 + i * 11;
-    const sway = Math.sin(t * 1.2 + i) * 2;
-    ctx.beginPath(); ctx.moveTo(x, 448); ctx.quadraticCurveTo(x + 12 + sway, 462, x + 8, 488); ctx.stroke();
-    const drop = (t * 35 + i * 9) % 38;
-    ctx.fillStyle = '#f1ffff'; ctx.fillRect(x + 5, 450 + drop, 2, 3);
-  }
-  ctx.fillStyle = '#486773'; ctx.font = 'bold 10px system-ui'; ctx.textAlign = 'center';
-  ctx.fillText('BRAIN TREE', 277, 520);
-  drawDsoDetails(t);
-}
 
 function drawSingapore(t) {
   // Three hotel towers and the boat-shaped SkyPark above Marina Bay.
@@ -1158,7 +1059,6 @@ export const sceneRenderers = Object.freeze({
   mordor: drawMordor,
   japan: drawJapan,
   antarctica: drawAntarctica,
-  dso: drawDso,
   mbs: drawSingapore,
 });
 

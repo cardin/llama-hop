@@ -3,8 +3,6 @@ import { trailStyles, dogePhrases, FINAL_TRANSFORMATION_SCORE } from './config.j
 
 // Character animation state stays private to the renderer, not the game rules.
 export function createLlamaRenderer() {
-  const ponytaArtwork = new Image();
-  ponytaArtwork.src = new URL('../ponyta.svg', import.meta.url).href;
   let state = 'ready', y = 255, score = 0, invulnerable = 0, llamaTilt = 0;
   let sparkles = [], sparkleSpawn = 0;
   let trailParticles = [], trailSpawn = 0, lastTrailKind = null;
@@ -39,7 +37,7 @@ export function createLlamaRenderer() {
       return;
     }
     if (score >= 33) {
-      drawPonytaFlames(time);
+      drawPonytaAura(time);
       return;
     }
     if (score >= 23) {
@@ -168,57 +166,215 @@ export function createLlamaRenderer() {
     ctx.quadraticCurveTo(0.19, 0, -0.15, -0.06); ctx.fill();
     ctx.restore();
   }
-  function drawPonytaFlames(time) {
+  function drawPonytaAura(time) {
     const t = time / 1000;
-    const sway = Math.sin(t * 4) * 3;
+    const pulse = 0.85 + Math.sin(t * 3.2) * 0.15;
     ctx.save();
-    // A narrow tail root opens into a long, swept-back horse-tail plume.
-    for (let layer = 0; layer < 3; layer++) {
-      ctx.save(); ctx.translate(-18, -4); ctx.scale(1 - layer * 0.15, 1 - layer * 0.2);
-      ctx.fillStyle = ['#e65b35', '#ffae2c', '#ffe576'][layer];
-      ctx.beginPath(); ctx.moveTo(1, 4);
-      ctx.bezierCurveTo(-11, 3, -14, -12, -28, -10);
-      ctx.quadraticCurveTo(-45, -8, -47, -25 + sway);
-      ctx.quadraticCurveTo(-39, -19, -35, -25);
-      ctx.quadraticCurveTo(-47, -36, -42, -44 + sway);
-      ctx.bezierCurveTo(-39, -27, -23, -39, -23, -49 + sway);
-      ctx.quadraticCurveTo(-12, -37, -23, -28);
-      ctx.quadraticCurveTo(-9, -31, -10, -39);
-      ctx.bezierCurveTo(0, -25, -15, -18, -8, -10);
-      ctx.quadraticCurveTo(-4, -4, 1, -2); ctx.closePath(); ctx.fill();
+    // A warm halo keeps the fire form readable against every sky.
+    const glow = ctx.createRadialGradient(0, -8, 12, 0, -8, 94);
+    glow.addColorStop(0, `rgba(255, 224, 138, ${0.34 * pulse})`);
+    glow.addColorStop(0.52, 'rgba(255, 132, 58, 0.2)');
+    glow.addColorStop(1, 'rgba(255, 96, 40, 0)');
+    ctx.fillStyle = glow; ctx.fillRect(-96, -104, 192, 192);
+    // Rising embers frame the silhouette without covering it.
+    for (let i = 0; i < 10; i++) {
+      const phase = (t * 0.55 + i * 0.17) % 1;
+      const x = -38 + ((i * 39) % 78) + Math.sin(t * 2 + i) * 4;
+      const yy = 26 - phase * 96;
+      ctx.globalAlpha = (1 - phase) * 0.9;
+      ctx.fillStyle = i % 3 ? '#ffd166' : '#ff8a4c';
+      ctx.beginPath(); ctx.arc(x, yy, 1 + (i % 2) * 0.7, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+  }
+  function drawPonytaTail(time) {
+    const t = time / 1000;
+    const sway = Math.sin(t * 2.6) * 2.2;
+    const layers = [
+      { scale: 1, color: '#d94a25', shift: 0 },
+      { scale: 0.82, color: '#ff8a2e', shift: 3 },
+      { scale: 0.62, color: '#ffc247', shift: 6 },
+      { scale: 0.42, color: '#fff0a0', shift: 9 }
+    ];
+    ctx.save();
+    ctx.translate(-20, -10);
+    ctx.rotate(-0.12 + Math.sin(t * 2.2) * 0.05);
+    for (const { scale, color, shift } of layers) {
+      ctx.save();
+      ctx.translate(-14, 0); ctx.scale(scale, scale); ctx.translate(14 + shift, 0);
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(-2 + sway * 0.2, 3);
+      ctx.bezierCurveTo(-12, 9, -24, 7, -28, 0);
+      ctx.lineTo(-36 + sway * 0.4, 2);
+      ctx.quadraticCurveTo(-34, -5, -30, -9);
+      ctx.lineTo(-39 + sway * 0.8, -8);
+      ctx.quadraticCurveTo(-37, -16, -33, -20);
+      ctx.lineTo(-42 + sway, -22);
+      ctx.quadraticCurveTo(-38, -31, -32, -34);
+      ctx.lineTo(-36 + sway, -42);
+      ctx.quadraticCurveTo(-27, -44, -21, -36);
+      ctx.lineTo(-16 + sway * 0.6, -44);
+      ctx.quadraticCurveTo(-10, -38, -12, -31);
+      ctx.lineTo(-4, -33);
+      ctx.quadraticCurveTo(2, -26, -3, -20);
+      ctx.lineTo(4, -19);
+      ctx.quadraticCurveTo(7, -10, 0, -6);
+      ctx.lineTo(6, 0);
+      ctx.quadraticCurveTo(2, 5, -2 + sway * 0.2, 3);
+      ctx.closePath(); ctx.fill();
       ctx.restore();
     }
-    // One continuous mane follows the back of the neck down to the withers.
-    for (let layer = 0; layer < 3; layer++) {
-      ctx.save(); ctx.translate(7, -31); ctx.scale(1 - layer * 0.22, 1 - layer * 0.09);
-      ctx.fillStyle = ['#e65b35', '#ffae2c', '#ffe576'][layer];
-      ctx.beginPath(); ctx.moveTo(4, -7);
-      ctx.quadraticCurveTo(-6, -16, -20, -14 + sway);
-      ctx.lineTo(-13, -7); ctx.quadraticCurveTo(-23, -9, -26, -3 + sway);
-      ctx.lineTo(-15, 0); ctx.quadraticCurveTo(-21, 2, -25, 8);
-      ctx.lineTo(-13, 7); ctx.quadraticCurveTo(-20, 14, -20, 19);
-      ctx.lineTo(-11, 17); ctx.quadraticCurveTo(-16, 24, -23, 27);
-      ctx.quadraticCurveTo(-6, 33, 0, 25);
-      ctx.quadraticCurveTo(7, 10, 4, -7); ctx.closePath(); ctx.fill();
+    // Sparks peel off the tail plume.
+    for (let i = 0; i < 4; i++) {
+      const phase = (t * 0.7 + i * 0.24) % 1;
+      ctx.globalAlpha = 1 - phase;
+      ctx.fillStyle = i % 2 ? '#ffd166' : '#ff7d40';
+      ctx.beginPath();
+      ctx.arc(-42 + i * 8 + Math.sin(t * 3 + i) * 2, -6 - phase * 20 - i * 3, 1.3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+  function drawPonytaMane(time) {
+    const t = time / 1000;
+    const sway = Math.sin(t * 3.4) * 1.6;
+    const layers = [
+      { scale: 1, color: '#d94a25' },
+      { scale: 0.78, color: '#ff8a2e' },
+      { scale: 0.55, color: '#ffe066' }
+    ];
+    ctx.save();
+    for (const { scale, color } of layers) {
+      ctx.save();
+      ctx.translate(16, -22); ctx.scale(scale, scale); ctx.translate(-16, 22);
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(37, -43);
+      ctx.bezierCurveTo(36, -51, 30, -57, 22 - sway, -55);
+      ctx.lineTo(24 - sway, -62);
+      ctx.quadraticCurveTo(16, -58, 12, -50);
+      ctx.lineTo(10 - sway, -58);
+      ctx.quadraticCurveTo(4, -52, 4, -42);
+      ctx.lineTo(0 - sway, -49);
+      ctx.quadraticCurveTo(-4, -41, -1, -33);
+      ctx.lineTo(-6, -38);
+      ctx.quadraticCurveTo(-9, -29, -6 - sway, -21);
+      ctx.quadraticCurveTo(-1, -23, 4, -26);
+      ctx.quadraticCurveTo(10, -30, 14, -36);
+      ctx.quadraticCurveTo(18, -42, 24, -45);
+      ctx.quadraticCurveTo(31, -48, 37, -43);
+      ctx.closePath(); ctx.fill();
       ctx.restore();
     }
     ctx.restore();
   }
-  function drawPonytaForelock(time) {
-    const sway = Math.sin(time / 250) * 2;
+  function drawPonytaLeg(x, top, bottom, width, coat, hoof, swing) {
+    const mid = (top + bottom) / 2;
+    ctx.fillStyle = coat;
+    ctx.beginPath();
+    ctx.moveTo(x - width / 2, top);
+    ctx.quadraticCurveTo(x - width * 0.3 + swing * 0.4, mid, x - width * 0.34 + swing, bottom);
+    ctx.lineTo(x + width * 0.34 + swing, bottom);
+    ctx.quadraticCurveTo(x + width * 0.3 + swing * 0.4, mid, x + width / 2, top);
+    ctx.closePath(); ctx.fill();
+    rounded(x - width * 0.4 + swing, bottom, width * 0.8, 4.5, 1.8, hoof);
+    ctx.fillStyle = '#8fa0c2';
+    ctx.fillRect(x - width * 0.26 + swing, bottom + 1.2, width * 0.52, 1);
+  }
+  function drawPonytaFetlock(x, y, scale, time, phase) {
     ctx.save();
-    for (let layer = 0; layer < 2; layer++) {
-      ctx.fillStyle = layer ? '#ffda59' : '#ec7130';
-      ctx.save(); ctx.translate(11, -36); ctx.scale(1 - layer * 0.2, 1 - layer * 0.25);
-      ctx.beginPath(); ctx.moveTo(7, 1);
-      ctx.quadraticCurveTo(12, -12, -5, -16);
-      ctx.quadraticCurveTo(-17, -18, -21, -29 + sway);
-      ctx.quadraticCurveTo(-26, -18, -19, -11);
-      ctx.lineTo(-27, -14 + sway);
-      ctx.bezierCurveTo(-24, 0, -6, -3, -2, 4);
-      ctx.quadraticCurveTo(3, -1, 7, 1); ctx.closePath(); ctx.fill(); ctx.restore();
-    }
+    ctx.translate(x, y);
+    ctx.rotate(-0.12);
+    ctx.shadowColor = '#ff8a3c'; ctx.shadowBlur = 5;
+    ponytaFlame(0, 0, 6 * scale, 11 * scale, phase, time);
     ctx.restore();
+  }
+  function drawPonytaHorse(time) {
+    const t = time / 1000;
+    const stride = Math.sin(t * 4) * 1.1;
+    const coat = '#fff6dc', farCoat = '#efdcb8', hoof = '#4b5c82';
+
+    drawPonytaTail(time);
+
+    // Far pair of legs sits behind the barrel.
+    drawPonytaLeg(-19, 3, 33, 5.5, farCoat, '#435273', -stride * 0.7);
+    drawPonytaLeg(8, 4, 33, 5.5, farCoat, '#435273', stride * 0.7);
+    drawPonytaFetlock(-22, 27, 0.8, time, 2);
+    drawPonytaFetlock(5, 27, 0.8, time, 5);
+
+    // Barrel, chest, rump and arched neck in one clean silhouette.
+    const coatFill = ctx.createLinearGradient(-18, -22, 16, 32);
+    coatFill.addColorStop(0, '#fffdf5');
+    coatFill.addColorStop(0.55, '#f8e9cc');
+    coatFill.addColorStop(1, '#ecd4ac');
+    ctx.fillStyle = coatFill;
+    ctx.beginPath();
+    ctx.moveTo(-25, -2);
+    ctx.bezierCurveTo(-28, -15, -19, -22, -8, -20);
+    ctx.bezierCurveTo(0, -19, 6, -18, 9, -14);
+    ctx.bezierCurveTo(11, -26, 17, -35, 24, -41);
+    ctx.lineTo(29, -44);
+    ctx.lineTo(32, -37);
+    ctx.bezierCurveTo(25, -31, 20, -20, 17, -10);
+    ctx.bezierCurveTo(16, -1, 18, 5, 17, 10);
+    ctx.bezierCurveTo(9, 16, -2, 18, -13, 14);
+    ctx.bezierCurveTo(-21, 12, -25, 5, -25, -2);
+    ctx.closePath(); ctx.fill();
+
+    // Painted shading: rump, belly, chest light and a bright topline.
+    ctx.save();
+    ctx.globalAlpha = 0.55; ctx.fillStyle = '#eed7b0';
+    ctx.beginPath(); ctx.ellipse(-16, 3, 12, 9, -0.18, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 0.45;
+    ctx.beginPath(); ctx.ellipse(3, 10, 11, 5, 0.08, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = '#fffdf0'; ctx.lineWidth = 2; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(-20, -14); ctx.quadraticCurveTo(-6, -19, 8, -15); ctx.stroke();
+    ctx.restore();
+
+    // Long pony head with a soft muzzle.
+    ctx.fillStyle = coatFill;
+    ctx.beginPath();
+    ctx.moveTo(23, -40);
+    ctx.bezierCurveTo(23, -48, 28, -51, 35, -47);
+    ctx.bezierCurveTo(43, -46, 49, -39, 52, -34);
+    ctx.bezierCurveTo(54, -30, 52, -27, 48, -28);
+    ctx.bezierCurveTo(42, -29, 38, -31, 34, -33.5);
+    ctx.bezierCurveTo(30, -36, 25, -37, 22, -34);
+    ctx.closePath(); ctx.fill();
+    ctx.save();
+    ctx.globalAlpha = 0.65; ctx.fillStyle = '#efd7b1';
+    ctx.beginPath(); ctx.ellipse(47, -30.5, 4.8, 3.2, -0.25, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = '#e2c79d'; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.moveTo(26, -33); ctx.quadraticCurveTo(33, -30, 39, -31); ctx.stroke();
+    // Big dark eye with a violet-blue iris and a clean highlight.
+    ctx.fillStyle = '#292438';
+    ctx.beginPath(); ctx.ellipse(34.5, -39.5, 3.9, 4.6, -0.08, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#5f6fa0';
+    ctx.beginPath(); ctx.ellipse(34.7, -38.2, 2.4, 3, -0.08, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#fffdf4';
+    ctx.beginPath(); ctx.arc(35.9, -40.9, 1.2, 0, Math.PI * 2); ctx.fill();
+    // Nostril and mouth.
+    ctx.fillStyle = '#8c6a55';
+    ctx.beginPath(); ctx.ellipse(49, -30.3, 1.15, 1.55, -0.3, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#a67d62'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(46, -28.5); ctx.quadraticCurveTo(49, -27.9, 51, -29); ctx.stroke();
+    ctx.restore();
+
+    // The mane drapes over the crown and neck as one continuous flame sheet.
+    drawPonytaMane(time);
+    scenePolygon([[21, -44], [18, -54], [30, -47]], '#efdcb8');
+    scenePolygon([[28, -45], [26, -56], [39, -47]], coat);
+    scenePolygon([[22, -46], [21, -52], [27, -48]], '#e0a896');
+    scenePolygon([[30, -47], [29, -53], [35, -48]], '#e0a896');
+
+    // Near legs and their fetlock flames sit in front.
+    drawPonytaLeg(-12, 4, 34, 6, coat, hoof, stride);
+    drawPonytaLeg(14, 5, 34, 6, coat, hoof, -stride);
+    drawPonytaFetlock(-16, 28, 0.95, time, 1);
+    drawPonytaFetlock(11, 28, 0.95, time, 4);
   }
   function drawAvatarElements(time, front) {
     const t = time / 1000;
@@ -611,18 +767,15 @@ export function createLlamaRenderer() {
       ctx.restore();
       return;
     }
-    if (ponyta && ponytaArtwork.complete && ponytaArtwork.naturalWidth > 0) {
-      // Face the direction of travel. Crop transparent padding, not the artwork.
-      ctx.rotate(llamaTilt);
-      ctx.scale(-1, 1);
-      ctx.drawImage(ponytaArtwork, 68, 20, 340, 435, -33, -57, 66, 84);
-      ctx.restore();
-      return;
-    }
     // Effects use the continuous frame timestamp in an upright local space.
     // Hopping changes the body's tilt, not the aura or orbital animation phase.
     drawLlamaEffects(time);
     ctx.rotate(llamaTilt);
+    if (ponyta) {
+      drawPonytaHorse(time);
+      ctx.restore();
+      return;
+    }
     if (score >= 63) drawStrangeCloak(time);
     if (score >= 43 && score < 53) {
       const flutter = Math.sin(time / 180) * 5;
@@ -639,7 +792,7 @@ export function createLlamaRenderer() {
     rounded(4, -35, 24, 15, 6, coat);
     rounded(5, -48, 5, 17, 2, coat); rounded(14, -47, 5, 16, 2, coat);
     rounded(-14, 10, 6, 14, 2, coat); rounded(3, 10, 6, 14, 2, coat);
-    if (!ponyta) rounded(-27, -12, 12, 6, 3, coat);
+    rounded(-27, -12, 12, 6, 3, coat);
     if (score >= 43 && score < 53) {
       rounded(-19, -9, 32, 24, 9, '#2275cf');
       rounded(4, -21, 13, 25, 5, '#2275cf');
@@ -650,13 +803,6 @@ export function createLlamaRenderer() {
       ctx.lineTo(-4, 9); ctx.lineTo(-15, -2); ctx.closePath(); ctx.fill(); ctx.stroke();
       ctx.fillStyle = '#c51e39'; ctx.textAlign = 'center'; ctx.font = 'bold 12px system-ui';
       ctx.fillText('S', -4, 4);
-    } else if (ponyta) {
-      for (const x of [-11, 6]) {
-        ponytaFlame(x, 16, 9, 14, x, time);
-        rounded(x - 3, 20, 6, 5, 1, '#565467');
-      }
-      // A small forelock overlays the crown, leaving the muzzle and eye clear.
-      drawPonytaForelock(time);
     } else if (score >= 63) {
       rounded(-19, -9, 32, 24, 9, '#245577');
       rounded(4, -22, 13, 25, 5, '#245577');

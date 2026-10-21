@@ -76,11 +76,6 @@ export const weatherTypes = [
     hills: '#a8d399', cloud: '#ffffffb0', sun: '#ffe49a'
   },
   {
-    name: 'DSO SP20', landmark: 'dso',
-    skyTop: '#adcddf', sky: '#d7eaf0', skyHorizon: '#f5eed9',
-    hills: '#a7c7ad', cloud: '#ffffff90', sun: '#ffe49a'
-  },
-  {
     name: 'Singapore', landmark: 'mbs',
     skyTop: '#8d8db6', sky: '#e7b8c8', skyHorizon: '#f9d8ad',
     hills: '#889bb5', cloud: '#ffe6da80', sun: '#ffdcaa'
